@@ -1,0 +1,171 @@
+const Sale = require("../models/Sale");
+const Bin = require("../models/Bin");
+const Bank = require("../models/Bank");
+
+exports.createSale = async (req, res) => {
+  try {
+    const { binId, bankId } = req.body;
+
+    const bin = await Bin.findOne({ _id: binId, user: req.user.id }).populate(
+      "materials.material"
+    );
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "No bin found",
+      });
+    }
+
+    bin.sold = true;
+    await bin.save();
+
+    if (!bin.validationStatus) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Bin must be validated by an agent first",
+      });
+    }
+
+    const bankDetails = await Bank.findOne({ _id: bankId, user: req.user.id });
+    if (!bankDetails) {
+      return res.status(404).json({
+        status: "fail",
+        message: "No bank details found",
+      });
+    }
+
+    const sale = await Sale.create({
+      user: req.user.id,
+      bin: binId,
+      materials: bin.materials,
+      totalQuantity: bin.totalQuantity,
+      totalPrice: bin.totalPrice,
+      bankDetails: {
+        bankName: bankDetails.bankName,
+        accountNumber: bankDetails.accountNumber,
+        accountName: bankDetails.accountName,
+      },
+    });
+
+    // Delete the bin after successful sale
+    // await Bin.findByIdAndDelete(binId);
+
+    res.status(201).json({
+      status: "success",
+      data: {
+        sale,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+exports.getMySales = async (req, res) => {
+  try {
+    const sales = await Sale.find({ user: req.user.id })
+      .populate("materials.material")
+      .sort("-createdAt");
+
+    res.status(200).json({
+      status: "success",
+      results: sales.length,
+      data: {
+        sales,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+exports.getAllSales = async (req, res) => {
+  try {
+    const sales = await Sale.find()
+      .populate("user", "username email firstName lastName")
+      .populate("materials.material")
+      .sort("-createdAt");
+
+    res.status(200).json({
+      status: "success",
+      results: sales.length,
+      data: {
+        sales,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+exports.updateSaleStatus = async (req, res) => {
+  try {
+    const sale = await Sale.findByIdAndUpdate(
+      req.params.id,
+      { status: req.body.status },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!sale) {
+      return res.status(404).json({
+        status: "fail",
+        message: "No sale found with that ID",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        sale,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+exports.getSaleById = async (req, res) => {
+  try {
+    const sale = await Sale.findById(req.params.id).populate(
+      "materials.material"
+    );
+    if (!sale) {
+      return res.status(404).json({
+        status: "fail",
+        message: "No sale found with that ID",
+      });
+    }
+    // Only allow access if the user owns the sale
+    if (sale.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        status: "fail",
+        message: "Not authorized to view this sale",
+      });
+    }
+    res.status(200).json({
+      status: "success",
+      data: { sale },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};

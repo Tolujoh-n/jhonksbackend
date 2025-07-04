@@ -1,0 +1,57 @@
+ Jhonks APIS:
+
+Authentication
+
+POST /api/auth/register - User registration
+POST /api/auth/login - User login
+GET /api/auth/me - Get current user (protected)
+
+Materials
+
+GET /api/materials - Get all materials
+GET /api/materials/category/:category - Get materials by category
+GET /api/materials/:id - Get specific material
+POST /api/materials - Create material (admin only)
+PATCH /api/materials/:id - Update material (admin only)
+DELETE /api/materials/:id - Delete material (admin only)
+
+Bin Management
+
+GET /api/bin - Get user's bin (protected)
+POST /api/bin/add - Add material to bin (protected)
+DELETE /api/bin/:materialId - Remove material from bin (protected)
+POST /api/bin/clear - Clear bin (protected)
+POST /api/bin/select-agent - Select agent (protected)
+
+Agent Management
+
+POST /api/agent/register - Register as agent (protected)
+GET /api/agent/list - Get all agents
+GET /api/agent/:id - Get a specific agent details
+GET /api/agent/pending-validations - Get pending validations (agent only)
+POST /api/agent/validate/:binId - Validate bin (agent only)
+GET /api/agent/validation-history - Get validation history (agent only)
+POST /api/agent/delivery - Deliver bin (agent only)
+GET /api/agent/delivery-history - Get Delivery history (agent only)
+
+Sales
+
+POST /api/sales - Create sale (protected)
+GET /api/sales - Get sales history (protected)
+GET /api/sales/:id - Get specific sale (protected)
+Bank Details
+POST /api/bank - Add bank account (protected)
+GET /api/bank - Get user's bank accounts (protected)
+DELETE /api/bank/:id - Delete bank account (protected)
+
+Admin
+
+GET /api/admin/dashboard-stats - Get dashboard stats (admin only)
+GET /api/admin/users - Get all users(admin only)
+GET /api/admin/agents - Get all Agent (admin only)
+GET /api/admin/sales - Get all sales (admin only)
+GET /api/admin/deliveries - Get all deliveries (admin only)
+PATCH /api/admin/deliveries/:id/status - Update deliveries Status(admin only)
+
+
+
