@@ -9,12 +9,24 @@ const rootRouter = require("./src/router/index");
 
 const app = express();
 
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim());
+
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
@@ -22,11 +34,21 @@ app.use(cookieParser());
 
 // Database connection
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db")
+  .connect(
+    process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db"
+  )
   .then(() => console.log("✅ Connected to MongoDB"))
   .catch((err) => console.log("❌ MongoDB connection error:", err));
 
 // Routes
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: "success",
+    message: "Welcome to Jhonks Enviromental APIs 🚀",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use("/api", rootRouter);
 
 // Health check endpoint
