@@ -21,10 +21,10 @@ app.use(
 app.use(cookieParser());
 
 // Database connection
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db")
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.log("❌ MongoDB connection error:", err));
+// mongoose
+//   .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db")
+//   .then(() => console.log("✅ Connected to MongoDB"))
+//   .catch((err) => console.log("❌ MongoDB connection error:", err));
 
 // Routes
 app.get("/", (req, res) => {
@@ -66,10 +66,22 @@ app.use("*", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(
-    `📱 Frontend URL: ${process.env.CORS_ORIGIN || "http://localhost:3000"}`
-  );
-  console.log(`🔗 API URL: http://localhost:${PORT}/api`);
-});
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db", {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("✅ Connected to MongoDB");
+
+    // Now safe to start the server
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📱 Frontend URL: ${process.env.CORS_ORIGIN || "http://localhost:3000"}`);
+      console.log(`🔗 API URL: http://localhost:${PORT}/api`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err);
+  });
+
