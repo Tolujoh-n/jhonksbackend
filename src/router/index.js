@@ -6,6 +6,10 @@ const agentRouter = require("./agentRouter");
 const saleRouter = require("./saleRouter");
 const bankRouter = require("./bankRouter");
 const adminRouter = require("./adminRouter");
+const referralRouter = require("./referralRouter");
+const rewardRouter = require("./rewardRouter");
+const chatRouter = require("./chatRouter");
+const notificationRouter = require("./notificationRouter");
 
 const router = express.Router();
 
@@ -17,5 +21,9 @@ router.use("/agent", agentRouter);
 router.use("/sales", saleRouter);
 router.use("/bank", bankRouter);
 router.use("/admin", adminRouter);
+router.use("/referrals", referralRouter);
+router.use("/rewards", rewardRouter);
+router.use("/chat", chatRouter);
+router.use("/notifications", notificationRouter);
 
 module.exports = router;

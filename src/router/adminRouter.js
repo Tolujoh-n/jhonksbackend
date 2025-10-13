@@ -7,6 +7,7 @@ const {
   getAllSales,
   getAllDeliveries,
   updateDeliveryStatus,
+  updateSaleStatus,
   getDashboardStats,
 } = require("../controllers/adminController");
 
@@ -18,6 +19,7 @@ router.get("/agents", getAllAgents);
 router.get("/sales", getAllSales);
 router.get("/deliveries", getAllDeliveries);
 router.patch("/deliveries/:id/status", updateDeliveryStatus);
+router.patch("/sales/:saleId/status", updateSaleStatus);
 router.get("/dashboard-stats", getDashboardStats);
 
 module.exports = router;

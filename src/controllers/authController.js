@@ -1,4 +1,6 @@
 const User = require("../models/User");
+const { checkReferralOnRegistration } = require("./referralController");
+const { NotificationService } = require("./notificationController");
 
 exports.register = async (req, res) => {
   try {
@@ -33,6 +35,10 @@ exports.register = async (req, res) => {
     });
 
     const token = user.generateAuthToken();
+
+    // Check for referral and create welcome notification
+    await checkReferralOnRegistration(user._id, phoneNumber);
+    await NotificationService.createWelcomeNotification(user._id);
 
     res.status(201).json({
       status: "success",

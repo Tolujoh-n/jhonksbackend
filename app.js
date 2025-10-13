@@ -3,11 +3,21 @@ const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const http = require("http");
+const socketIo = require("socket.io");
 require("dotenv").config({ path: "./config.env" });
 
 const rootRouter = require("./src/router/index");
 
 const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -64,6 +74,50 @@ app.use("*", (req, res) => {
   });
 });
 
+// Socket.IO connection handling
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  // Join user to their personal room
+  socket.on("join-user-room", (userId) => {
+    socket.join(`user-${userId}`);
+    console.log(`User ${userId} joined their room`);
+  });
+
+  // Join chat room
+  socket.on("join-chat", (chatId) => {
+    socket.join(`chat-${chatId}`);
+    console.log(`User joined chat ${chatId}`);
+  });
+
+  // Leave chat room
+  socket.on("leave-chat", (chatId) => {
+    socket.leave(`chat-${chatId}`);
+    console.log(`User left chat ${chatId}`);
+  });
+
+  // Handle new message
+  socket.on("new-message", (data) => {
+    socket.to(`chat-${data.chatId}`).emit("message-received", data);
+  });
+
+  // Handle typing indicators
+  socket.on("typing", (data) => {
+    socket.to(`chat-${data.chatId}`).emit("user-typing", data);
+  });
+
+  socket.on("stop-typing", (data) => {
+    socket.to(`chat-${data.chatId}`).emit("user-stopped-typing", data);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
+});
+
+// Make io available to other modules
+app.set("io", io);
+
 const PORT = process.env.PORT || 5000;
 
 mongoose
@@ -75,7 +129,7 @@ mongoose
     console.log("✅ Connected to MongoDB");
 
     // Now safe to start the server
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📱 Frontend URL: ${process.env.CORS_ORIGIN || "http://localhost:3000"}`);
       console.log(`🔗 API URL: http://localhost:${PORT}/api`);

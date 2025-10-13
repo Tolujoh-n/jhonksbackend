@@ -1,5 +1,7 @@
 const Bin = require("../models/Bin");
 const Material = require("../models/Material");
+const User = require("../models/User");
+const { NotificationService } = require("./notificationController");
 
 exports.createBin = async (req, res) => {
   try {
@@ -240,6 +242,13 @@ exports.selectAgent = async (req, res) => {
 
     bin.selectedAgent = req.body.agentId;
     await bin.save();
+
+    // Create notification for the seller
+    const agent = await User.findById(req.body.agentId);
+    await NotificationService.createAgentSelectedNotification(
+      req.user.id, 
+      agent.firstName + ' ' + agent.lastName
+    );
 
     res.status(200).json({
       status: "success",

@@ -1,6 +1,9 @@
 const Sale = require("../models/Sale");
 const Bin = require("../models/Bin");
 const Bank = require("../models/Bank");
+const { updateReferralStatus } = require("./referralController");
+const { NotificationService } = require("./notificationController");
+const { closeChat } = require("./chatController");
 
 exports.createSale = async (req, res) => {
   try {
@@ -47,6 +50,13 @@ exports.createSale = async (req, res) => {
         accountName: bankDetails.accountName,
       },
     });
+
+    // Update referral status and create notifications
+    await updateReferralStatus(req.user.id);
+    await NotificationService.createSaleCompletedNotification(req.user.id, sale.totalPrice);
+    
+    // Close chat if exists
+    await closeChat(sale._id);
 
     // Delete the bin after successful sale
     // await Bin.findByIdAndDelete(binId);

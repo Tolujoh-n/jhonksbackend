@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Sale = require("../models/Sale");
 const Delivery = require("../models/Delivery");
 const Material = require("../models/Material");
+const { NotificationService } = require("./notificationController");
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -110,6 +111,41 @@ exports.updateDeliveryStatus = async (req, res) => {
       status: "success",
       data: {
         delivery,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+exports.updateSaleStatus = async (req, res) => {
+  try {
+    const { saleId } = req.params;
+    const { status } = req.body;
+
+    const sale = await Sale.findById(saleId);
+    if (!sale) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Sale not found",
+      });
+    }
+
+    sale.status = status;
+    await sale.save();
+
+    // Create notification for payment received
+    if (status === 'paid') {
+      await NotificationService.createPaymentReceivedNotification(sale.user, sale.totalPrice);
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        sale,
       },
     });
   } catch (error) {
