@@ -3,24 +3,26 @@ const User = require("../models/User");
 const Sale = require("../models/Sale");
 const Notification = require("../models/Notification");
 
-// Get or create chat for a sale
+// Get or create chat for a bin
 const getOrCreateChat = async (req, res) => {
   try {
-    const { saleId } = req.params;
+    const { binId } = req.params;
     const userId = req.user.id;
 
-    // Verify sale exists and user is participant
-    const sale = await Sale.findById(saleId).populate("user");
-    if (!sale) {
+    // Verify bin exists and get bin details
+    const Bin = require("../models/Bin");
+    const bin = await Bin.findById(binId).populate("user").populate("selectedAgent");
+    
+    if (!bin) {
       return res.status(404).json({
         status: "error",
-        message: "Sale not found",
+        message: "Bin not found",
       });
     }
 
-    // Check if user is seller or agent
-    const isSeller = sale.user._id.toString() === userId;
-    const isAgent = sale.agent && sale.agent.toString() === userId;
+    // Check if user is seller or assigned agent
+    const isSeller = bin.user._id.toString() === userId;
+    const isAgent = bin.selectedAgent && bin.selectedAgent._id.toString() === userId;
 
     if (!isSeller && !isAgent) {
       return res.status(403).json({
@@ -29,19 +31,19 @@ const getOrCreateChat = async (req, res) => {
       });
     }
 
-    // Find existing chat
-    let chat = await Chat.findOne({ sale: saleId });
+    // Find existing chat for this bin
+    let chat = await Chat.findOne({ bin: binId });
 
     if (!chat) {
       // Create new chat
-      const participants = [sale.user._id];
-      if (sale.agent) {
-        participants.push(sale.agent);
+      const participants = [bin.user._id];
+      if (bin.selectedAgent) {
+        participants.push(bin.selectedAgent._id);
       }
 
       chat = new Chat({
         participants,
-        sale: saleId,
+        bin: binId,
         messages: [],
       });
 
@@ -54,9 +56,17 @@ const getOrCreateChat = async (req, res) => {
       { path: "messages.sender", select: "firstName lastName" },
     ]);
 
+    // Add bin information for display
+    const chatData = chat.toObject();
+    chatData.bin = {
+      _id: bin._id,
+      totalPrice: bin.totalPrice,
+      totalQuantity: bin.totalQuantity
+    };
+
     res.status(200).json({
       status: "success",
-      data: chat,
+      data: chatData,
     });
   } catch (error) {
     res.status(500).json({
@@ -229,10 +239,53 @@ const closeChat = async (saleId) => {
   }
 };
 
+// Clear chat messages (when sale is confirmed)
+const clearChatMessages = async (binId) => {
+  try {
+    await Chat.findOneAndUpdate(
+      { bin: binId },
+      { 
+        messages: [],
+        lastMessageAt: new Date()
+      }
+    );
+  } catch (error) {
+    console.error("Error clearing chat messages:", error);
+  }
+};
+
+// API endpoint to clear chat messages
+const clearChatMessagesAPI = async (req, res) => {
+  try {
+    const { binId } = req.params;
+    
+    await Chat.findOneAndUpdate(
+      { bin: binId },
+      { 
+        messages: [],
+        lastMessageAt: new Date()
+      }
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: "Chat messages cleared successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error clearing chat messages",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getOrCreateChat,
   sendMessage,
   markAsRead,
   getUserChats,
   closeChat,
+  clearChatMessages,
+  clearChatMessagesAPI,
 };

@@ -6,10 +6,13 @@ const chatSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   }],
+  bin: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Bin",
+  },
   sale: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Sale",
-    required: true,
   },
   messages: [{
     sender: {
@@ -52,7 +55,17 @@ const chatSchema = new mongoose.Schema({
 
 // Index for efficient queries
 chatSchema.index({ participants: 1 });
+chatSchema.index({ bin: 1 });
 chatSchema.index({ sale: 1 });
 chatSchema.index({ lastMessageAt: -1 });
+
+// Validation: either bin or sale must be provided
+chatSchema.pre('validate', function(next) {
+  if (!this.bin && !this.sale) {
+    next(new Error('Either bin or sale must be specified'));
+  } else {
+    next();
+  }
+});
 
 module.exports = mongoose.model("Chat", chatSchema);

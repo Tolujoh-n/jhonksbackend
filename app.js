@@ -24,7 +24,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: "http://localhost:3000" || "http://localhost:3000",
     credentials: true,
   })
 );
@@ -121,7 +121,7 @@ app.set("io", io);
 const PORT = process.env.PORT || 5000;
 
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db", {
+  .connect("mongodb+srv://jhonks:50nULv9P5ykEOA31@jhonks.2ssgzoz.mongodb.net/?retryWrites=true&w=majority&appName=jhonks", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
