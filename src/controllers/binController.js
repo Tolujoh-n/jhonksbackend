@@ -25,7 +25,7 @@ exports.createBin = async (req, res) => {
 
 exports.getMyBin = async (req, res) => {
   try {
-    const bin = await Bin.findOne({
+    let bin = await Bin.findOne({
       user: req.user.id,
       sold: false,
       // $or: [
@@ -39,10 +39,16 @@ exports.getMyBin = async (req, res) => {
         "username firstName lastName phoneNumber state agentDetails"
       );
 
+    // If no bin found, create an empty one for the user
     if (!bin) {
-      return res.status(404).json({
-        status: "fail",
-        message: "No bin found",
+      bin = await Bin.create({
+        user: req.user.id,
+        materials: [],
+        totalPrice: 0,
+        totalQuantity: 0,
+        sold: false,
+        validationStatus: false,
+        selectedAgent: null,
       });
     }
 
