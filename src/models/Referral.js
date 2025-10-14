@@ -32,6 +32,14 @@ const referralSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  clickTracked: {
+    type: Boolean,
+    default: false,
+  },
+  registered: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 // Index for efficient queries
