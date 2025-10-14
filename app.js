@@ -131,7 +131,7 @@ app.set("io", io);
 const PORT = process.env.PORT || 5000;
 
 mongoose
-  .connect("mongodb+srv://jhonks:50nULv9P5ykEOA31@jhonks.2ssgzoz.mongodb.net/?retryWrites=true&w=majority&appName=jhonks", {
+  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
