@@ -3,10 +3,12 @@ const Contact = require('../models/Contact');
 // Submit contact form
 exports.submitContact = async (req, res) => {
   try {
+    console.log('Contact form submission received:', req.body);
     const { name, email, phone, subject, message } = req.body;
 
     // Validate required fields
     if (!name || !email || !subject || !message) {
+      console.log('Missing required fields:', { name, email, subject, message });
       return res.status(400).json({
         status: 'error',
         message: 'Please fill in all required fields',
@@ -21,6 +23,8 @@ exports.submitContact = async (req, res) => {
       subject,
       message,
     });
+
+    console.log('Contact created successfully:', contact._id);
 
     res.status(201).json({
       status: 'success',
@@ -48,6 +52,7 @@ exports.submitContact = async (req, res) => {
 // Get all contact submissions (admin only)
 exports.getAllContacts = async (req, res) => {
   try {
+    console.log('Fetching contacts with query:', req.query);
     const { status, priority, page = 1, limit = 10, search } = req.query;
     
     // Build filter object
@@ -66,6 +71,8 @@ exports.getAllContacts = async (req, res) => {
       ];
     }
 
+    console.log('Filter object:', filter);
+
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
@@ -77,6 +84,8 @@ exports.getAllContacts = async (req, res) => {
 
     // Get total count for pagination
     const total = await Contact.countDocuments(filter);
+
+    console.log(`Found ${contacts.length} contacts out of ${total} total`);
 
     res.status(200).json({
       status: 'success',

@@ -34,17 +34,17 @@ app.use((req, res, next) => {
 
 app.use(
   cors({
-    origin: "http://localhost:3000" || "http://localhost:3000",
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
     credentials: true,
   })
 );
 app.use(cookieParser());
 
 // Database connection
-// mongoose
-//   .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db")
-//   .then(() => console.log("✅ Connected to MongoDB"))
-//   .catch((err) => console.log("❌ MongoDB connection error:", err));
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db")
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.log("❌ MongoDB connection error:", err));
 
 // Routes
 app.get("/", (req, res) => {

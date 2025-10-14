@@ -3,9 +3,11 @@ const Newsletter = require('../models/Newsletter');
 // Subscribe to newsletter
 exports.subscribeNewsletter = async (req, res) => {
   try {
+    console.log('Newsletter subscription received:', req.body);
     const { email } = req.body;
 
     if (!email) {
+      console.log('No email provided');
       return res.status(400).json({
         status: 'error',
         message: 'Email address is required',
@@ -14,9 +16,11 @@ exports.subscribeNewsletter = async (req, res) => {
 
     // Check if email already exists
     const existingSubscription = await Newsletter.findOne({ email });
+    console.log('Existing subscription check:', existingSubscription);
 
     if (existingSubscription) {
       if (existingSubscription.isActive) {
+        console.log('Email already subscribed');
         return res.status(400).json({
           status: 'error',
           message: 'This email is already subscribed to our newsletter',
@@ -27,6 +31,8 @@ exports.subscribeNewsletter = async (req, res) => {
         existingSubscription.subscribedAt = new Date();
         existingSubscription.unsubscribedAt = undefined;
         await existingSubscription.save();
+
+        console.log('Subscription reactivated:', existingSubscription._id);
 
         return res.status(200).json({
           status: 'success',
@@ -44,6 +50,8 @@ exports.subscribeNewsletter = async (req, res) => {
       email,
       source: 'website',
     });
+
+    console.log('Newsletter subscription created:', newsletter._id);
 
     res.status(201).json({
       status: 'success',
@@ -112,6 +120,7 @@ exports.unsubscribeNewsletter = async (req, res) => {
 // Get all newsletter subscribers (admin only)
 exports.getAllSubscribers = async (req, res) => {
   try {
+    console.log('Fetching newsletter subscribers with query:', req.query);
     const { page = 1, limit = 10, search, status = 'active' } = req.query;
     
     // Build filter object
@@ -126,6 +135,8 @@ exports.getAllSubscribers = async (req, res) => {
       filter.email = { $regex: search, $options: 'i' };
     }
 
+    console.log('Newsletter filter object:', filter);
+
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
@@ -137,6 +148,8 @@ exports.getAllSubscribers = async (req, res) => {
 
     // Get total count for pagination
     const total = await Newsletter.countDocuments(filter);
+
+    console.log(`Found ${subscribers.length} subscribers out of ${total} total`);
 
     res.status(200).json({
       status: 'success',
