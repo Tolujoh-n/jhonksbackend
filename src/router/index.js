@@ -10,6 +10,7 @@ const referralRouter = require("./referralRouter");
 const rewardRouter = require("./rewardRouter");
 const chatRouter = require("./chatRouter");
 const notificationRouter = require("./notificationRouter");
+const bountyRouter = require("./bountyRouter");
 
 const router = express.Router();
 
@@ -25,5 +26,6 @@ router.use("/referrals", referralRouter);
 router.use("/rewards", rewardRouter);
 router.use("/chat", chatRouter);
 router.use("/notifications", notificationRouter);
+router.use("/bounty", bountyRouter);
 
 module.exports = router;
