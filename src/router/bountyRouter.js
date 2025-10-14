@@ -9,6 +9,7 @@ const {
   deleteBounty,
   getUserRewardStats,
   getUserAvailableRewards,
+  getUserClaimedRewards,
   claimReward,
   getAllUserRewards,
   updateRewardStatus,
@@ -30,6 +31,7 @@ router.get("/active", getActiveBounties);
 // User routes
 router.get("/user/stats", protect, getUserRewardStats);
 router.get("/user/available", protect, getUserAvailableRewards);
+router.get("/user/claimed", protect, getUserClaimedRewards);
 router.post("/user/claim/:bountyId", protect, claimReward);
 
 module.exports = router;

@@ -20,8 +20,18 @@ const io = socketIo(server, {
 });
 
 // Middleware
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+// Handle large payloads for image uploads
+app.use((req, res, next) => {
+  if (req.url.includes('/bounty/admin/create') || req.url.includes('/bounty/admin/')) {
+    // Increase limit for bounty operations
+    req.setTimeout(30000); // 30 seconds timeout
+  }
+  next();
+});
+
 app.use(
   cors({
     origin: "http://localhost:3000" || "http://localhost:3000",

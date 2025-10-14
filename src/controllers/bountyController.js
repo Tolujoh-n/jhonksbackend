@@ -216,6 +216,28 @@ exports.getUserAvailableRewards = async (req, res) => {
   }
 };
 
+// Get user's claimed rewards
+exports.getUserClaimedRewards = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const claimedRewards = await UserReward.find({ user: userId })
+      .populate("bounty")
+      .sort({ claimedAt: -1 });
+
+    res.status(200).json({
+      status: "success",
+      data: claimedRewards,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Error fetching claimed rewards",
+      error: error.message,
+    });
+  }
+};
+
 // Claim reward
 exports.claimReward = async (req, res) => {
   try {
@@ -324,10 +346,29 @@ exports.getAllUserRewards = async (req, res) => {
         }
       },
       {
+        $lookup: {
+          from: "banks",
+          localField: "user._id",
+          foreignField: "user",
+          as: "bankDetails"
+        }
+      },
+      {
         $unwind: "$user"
       },
       {
         $unwind: "$bounty"
+      },
+      {
+        $addFields: {
+          bankDetails: {
+            $cond: {
+              if: { $gt: [{ $size: "$bankDetails" }, 0] },
+              then: { $arrayElemAt: ["$bankDetails", 0] },
+              else: null
+            }
+          }
+        }
       }
     ];
 
