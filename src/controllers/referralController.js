@@ -8,15 +8,35 @@ const getReferralStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const totalReferrals = await Referral.countDocuments({ referrer: userId });
-    const pendingReferrals = await Referral.countDocuments({ 
-      referrer: userId, 
-      status: "pending" 
-    });
-    const approvedReferrals = await Referral.countDocuments({ 
-      referrer: userId, 
-      status: "approved" 
-    });
+    // Get all referrals for this user
+    const allReferrals = await Referral.find({ referrer: userId }).populate("referredUser", "totalSales");
+    
+    // Update referral statuses based on current sales
+    let approvedCount = 0;
+    let pendingCount = 0;
+    
+    for (const referral of allReferrals) {
+      if (referral.referredUser && referral.status === "pending") {
+        const userSales = await Sale.find({ user: referral.referredUser._id, status: "paid" });
+        const totalSales = userSales.reduce((sum, sale) => sum + (sale.totalQuantity || 0), 0);
+        
+        if (totalSales >= 5) {
+          referral.status = "approved";
+          referral.approvedAt = new Date();
+          referral.totalSales = totalSales;
+          await referral.save();
+          approvedCount++;
+        } else {
+          pendingCount++;
+        }
+      } else if (referral.status === "approved") {
+        approvedCount++;
+      } else {
+        pendingCount++;
+      }
+    }
+
+    const totalReferrals = allReferrals.length;
     const phoneNumbersTracked = await Referral.countDocuments({ 
       referrer: userId, 
       clickTracked: true 
@@ -30,8 +50,8 @@ const getReferralStats = async (req, res) => {
       status: "success",
       data: {
         totalReferrals,
-        pendingReferrals,
-        approvedReferrals,
+        pendingReferrals: pendingCount,
+        approvedReferrals: approvedCount,
         phoneNumbersTracked,
         registeredReferrals,
       },
@@ -57,10 +77,25 @@ const getReferralList = async (req, res) => {
     }
 
     const referrals = await Referral.find(query)
-      .populate("referredUser", "firstName lastName phoneNumber")
+      .populate("referredUser", "firstName lastName phoneNumber totalSales")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
+
+    // Update referral statuses based on current sales before returning
+    for (const referral of referrals) {
+      if (referral.referredUser && referral.status === "pending") {
+        const userSales = await Sale.find({ user: referral.referredUser._id, status: "paid" });
+        const totalSales = userSales.reduce((sum, sale) => sum + (sale.totalQuantity || 0), 0);
+        
+        if (totalSales >= 5) {
+          referral.status = "approved";
+          referral.approvedAt = new Date();
+          referral.totalSales = totalSales;
+          await referral.save();
+        }
+      }
+    }
 
     const total = await Referral.countDocuments(query);
 
@@ -182,9 +217,14 @@ const updateReferralStatus = async (userId) => {
       status: "pending",
     });
 
-    // Calculate total sales for this user
+    if (pendingReferrals.length === 0) return;
+
+    // Calculate total sales for this user from their sale history
     const sales = await Sale.find({ user: userId, status: "paid" });
     const totalSales = sales.reduce((sum, sale) => sum + (sale.totalQuantity || 0), 0);
+
+    // Update user's totalSales for future reference
+    await User.findByIdAndUpdate(userId, { totalSales });
 
     for (const referral of pendingReferrals) {
       if (totalSales >= 5) {
