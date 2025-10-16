@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Sale = require("../models/Sale");
 const Delivery = require("../models/Delivery");
 const Material = require("../models/Material");
+const Bin = require("../models/Bin");
 const { NotificationService } = require("./notificationController");
 
 exports.getAllUsers = async (req, res) => {
@@ -194,6 +195,490 @@ exports.getDashboardStats = async (req, res) => {
           totalSalesAmount: totalSalesAmount[0]?.total || 0,
           totalAgentPayments: totalAgentPayments[0]?.total || 0,
         },
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Get pending validations (bins that are validated but not delivered)
+exports.getPendingValidations = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, state, agent } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {
+      validationStatus: true,
+      deliveryStatus: false
+    };
+
+    if (state) {
+      query['user.state'] = state;
+    }
+
+    if (agent) {
+      query.selectedAgent = agent;
+    }
+
+    // First get the data with population
+    let validations = await Bin.find(query)
+      .populate('user', 'firstName lastName phoneNumber state homeAddress')
+      .populate('selectedAgent', 'firstName lastName phoneNumber agentDetails')
+      .populate('materials.material', 'name category pricePerKg')
+      .sort('-createdAt')
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Apply search filter after population
+    if (search) {
+      validations = validations.filter(validation => {
+        const user = validation.user;
+        const selectedAgent = validation.selectedAgent;
+        const searchLower = search.toLowerCase();
+        
+        return (
+          (user?.firstName?.toLowerCase().includes(searchLower)) ||
+          (user?.lastName?.toLowerCase().includes(searchLower)) ||
+          (user?.phoneNumber?.includes(search)) ||
+          (selectedAgent?.firstName?.toLowerCase().includes(searchLower)) ||
+          (selectedAgent?.lastName?.toLowerCase().includes(searchLower)) ||
+          (selectedAgent?.phoneNumber?.includes(search))
+        );
+      });
+    }
+
+    const total = await Bin.countDocuments(query);
+
+    // Calculate stats
+    const stats = await Bin.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalQuantity: { $sum: '$totalQuantity' },
+          totalBins: { $sum: 1 },
+          soldBins: { $sum: { $cond: [{ $eq: ['$sold', true] }, 1, 0] } },
+          pendingSaleBins: { $sum: { $cond: [{ $eq: ['$sold', false] }, 1, 0] } },
+          uniqueAgents: { $addToSet: '$selectedAgent' },
+          uniqueStates: { $addToSet: '$user.state' }
+        }
+      }
+    ]);
+
+    const quantityByState = await Bin.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: '$user.state',
+          quantity: { $sum: '$totalQuantity' }
+        }
+      },
+      { $sort: { quantity: -1 } }
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        validations,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        },
+        stats: {
+          totalQuantity: stats[0]?.totalQuantity || 0,
+          totalBins: stats[0]?.totalBins || 0,
+          soldBins: stats[0]?.soldBins || 0,
+          pendingSaleBins: stats[0]?.pendingSaleBins || 0,
+          uniqueAgents: stats[0]?.uniqueAgents?.length || 0,
+          uniqueStates: stats[0]?.uniqueStates?.length || 0,
+          quantityByState
+        }
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Get validation history (bins that have been delivered)
+exports.getValidationHistory = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, state, agent, status, date } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {
+      validationStatus: true,
+      deliveryStatus: true
+    };
+
+    if (state) {
+      query['user.state'] = state;
+    }
+
+    if (agent) {
+      query.selectedAgent = agent;
+    }
+
+    if (status) {
+      query.sold = status === 'completed';
+    }
+
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+      query.createdAt = { $gte: startDate, $lt: endDate };
+    }
+
+    // First get the data with population
+    let history = await Bin.find(query)
+      .populate('user', 'firstName lastName phoneNumber state homeAddress')
+      .populate('selectedAgent', 'firstName lastName phoneNumber agentDetails')
+      .populate('materials.material', 'name category pricePerKg')
+      .sort('-createdAt')
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Apply search filter after population
+    if (search) {
+      history = history.filter(validation => {
+        const user = validation.user;
+        const selectedAgent = validation.selectedAgent;
+        const searchLower = search.toLowerCase();
+        
+        return (
+          (user?.firstName?.toLowerCase().includes(searchLower)) ||
+          (user?.lastName?.toLowerCase().includes(searchLower)) ||
+          (user?.phoneNumber?.includes(search)) ||
+          (selectedAgent?.firstName?.toLowerCase().includes(searchLower)) ||
+          (selectedAgent?.lastName?.toLowerCase().includes(searchLower)) ||
+          (selectedAgent?.phoneNumber?.includes(search))
+        );
+      });
+    }
+
+    const total = await Bin.countDocuments(query);
+
+    // Calculate stats
+    const stats = await Bin.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalQuantity: { $sum: '$totalQuantity' },
+          totalBins: { $sum: 1 },
+          uniqueAgents: { $addToSet: '$selectedAgent' },
+          uniqueStates: { $addToSet: '$user.state' },
+          completedToday: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$sold', true] },
+                    {
+                      $gte: ['$createdAt', new Date(new Date().setHours(0, 0, 0, 0))]
+                    }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        history,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        },
+        stats: {
+          totalQuantity: stats[0]?.totalQuantity || 0,
+          totalBins: stats[0]?.totalBins || 0,
+          uniqueAgents: stats[0]?.uniqueAgents?.length || 0,
+          uniqueStates: stats[0]?.uniqueStates?.length || 0,
+          completedToday: stats[0]?.completedToday || 0
+        }
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Enhanced getAllSales with pagination and stats
+exports.getAllSalesEnhanced = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, status, date } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {};
+
+    // Add search filters
+    if (search) {
+      query.$or = [
+        { 'user.firstName': { $regex: search, $options: 'i' } },
+        { 'user.lastName': { $regex: search, $options: 'i' } },
+        { 'user.phoneNumber': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+      query.createdAt = { $gte: startDate, $lt: endDate };
+    }
+
+    const sales = await Sale.find(query)
+      .populate("user", "username email firstName lastName phoneNumber homeAddress")
+      .populate("materials.material", "name category pricePerKg")
+      .sort("-createdAt")
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Sale.countDocuments(query);
+
+    // Calculate stats
+    const stats = await Sale.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$totalPrice' },
+          totalSales: { $sum: 1 },
+          paidSales: {
+            $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] }
+          },
+          processingSales: {
+            $sum: { $cond: [{ $eq: ['$status', 'processing'] }, 1, 0] }
+          },
+          paidAmount: {
+            $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$totalPrice', 0] }
+          },
+          processingAmount: {
+            $sum: { $cond: [{ $eq: ['$status', 'processing'] }, '$totalPrice', 0] }
+          }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        sales,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        },
+        stats: stats[0] || {
+          totalRevenue: 0,
+          totalSales: 0,
+          paidSales: 0,
+          processingSales: 0,
+          paidAmount: 0,
+          processingAmount: 0
+        }
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Enhanced getAllDeliveries with pagination and stats
+exports.getAllDeliveriesEnhanced = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, status, paymentStatus, date } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {};
+
+    // Add search filters
+    if (search) {
+      query.$or = [
+        { 'agent.firstName': { $regex: search, $options: 'i' } },
+        { 'agent.lastName': { $regex: search, $options: 'i' } },
+        { 'agent.phoneNumber': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (status) {
+      query.pickupStatus = status;
+    }
+
+    if (paymentStatus) {
+      query.agentPaymentStatus = paymentStatus;
+    }
+
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+      query.createdAt = { $gte: startDate, $lt: endDate };
+    }
+
+    const deliveries = await Delivery.find(query)
+      .populate("agent", "username email firstName lastName phoneNumber agentDetails")
+      .populate("materials.material", "name category pricePerKg")
+      .sort("-createdAt")
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Delivery.countDocuments(query);
+
+    // Calculate stats
+    const stats = await Delivery.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalDeliveries: { $sum: 1 },
+          delivered: {
+            $sum: { $cond: [{ $eq: ['$pickupStatus', 'Delivered'] }, 1, 0] }
+          },
+          inStore: {
+            $sum: { $cond: [{ $eq: ['$pickupStatus', 'In-Store'] }, 1, 0] }
+          },
+          totalFee: { $sum: '$totalProfit' },
+          inStoreFee: {
+            $sum: { $cond: [{ $eq: ['$pickupStatus', 'In-Store'] }, '$totalProfit', 0] }
+          },
+          deliveredFee: {
+            $sum: { $cond: [{ $eq: ['$pickupStatus', 'Delivered'] }, '$totalProfit', 0] }
+          },
+          totalKg: { $sum: '$totalQuantity' }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        deliveries,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        },
+        stats: stats[0] || {
+          totalDeliveries: 0,
+          delivered: 0,
+          inStore: 0,
+          totalFee: 0,
+          inStoreFee: 0,
+          deliveredFee: 0,
+          totalKg: 0
+        }
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Update payment status for deliveries
+exports.updatePaymentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentStatus } = req.body;
+
+    const delivery = await Delivery.findByIdAndUpdate(
+      id,
+      { agentPaymentStatus: paymentStatus },
+      { new: true, runValidators: true }
+    );
+
+    if (!delivery) {
+      return res.status(404).json({
+        status: "fail",
+        message: "No delivery found with that ID",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        delivery,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Agent fee management
+let agentFeePerKg = 20; // Default fee
+
+exports.getAgentFee = async (req, res) => {
+  try {
+    res.status(200).json({
+      status: "success",
+      data: {
+        feePerKg: agentFeePerKg,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+exports.setAgentFee = async (req, res) => {
+  try {
+    const { feePerKg } = req.body;
+
+    if (!feePerKg || feePerKg < 0) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Please provide a valid fee per kg",
+      });
+    }
+
+    agentFeePerKg = feePerKg;
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        feePerKg: agentFeePerKg,
+        message: "Agent fee updated successfully",
       },
     });
   } catch (error) {
