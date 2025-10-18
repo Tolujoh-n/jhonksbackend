@@ -109,7 +109,33 @@ exports.setSelectedPaymentBank = async (req, res) => {
 // Get selected payment bank for agent
 exports.getSelectedPaymentBank = async (req, res) => {
   try {
+    console.log("=== GET SELECTED PAYMENT BANK DEBUG ===");
+    console.log("Request user object:", req.user);
+    console.log("Request user ID:", req.user?.id);
+    console.log("Request user ID type:", typeof req.user?.id);
+    console.log("Request headers:", req.headers);
+    
+    if (!req.user || !req.user.id) {
+      console.log("No user or user ID in request");
+      return res.status(401).json({
+        status: "fail",
+        message: "User not authenticated",
+      });
+    }
+    
     const user = await User.findById(req.user.id).populate('selectedPaymentBank');
+    console.log("User query result:", user);
+    
+    if (!user) {
+      console.log("User not found in database:", req.user.id);
+      return res.status(404).json({
+        status: "fail",
+        message: "User not found",
+      });
+    }
+    
+    console.log("User found, selectedPaymentBank:", user.selectedPaymentBank);
+    console.log("=== END DEBUG ===");
     
     res.status(200).json({
       status: "success",
@@ -118,6 +144,8 @@ exports.getSelectedPaymentBank = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Error in getSelectedPaymentBank:", error);
+    console.error("Error stack:", error.stack);
     res.status(400).json({
       status: "fail",
       message: error.message,
