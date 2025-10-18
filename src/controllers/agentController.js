@@ -104,10 +104,10 @@ exports.updateBinItemQuantity = async (req, res) => {
   try {
     const { binId, itemId, newQuantity } = req.body;
 
-    if (newQuantity < 0) {
+    if (newQuantity < 1) {
       return res.status(400).json({
         status: "fail",
-        message: "Quantity cannot be negative",
+        message: "Quantity cannot be less than 1",
       });
     }
 
@@ -136,11 +136,6 @@ exports.updateBinItemQuantity = async (req, res) => {
     // Update quantity
     materialEntry.quantity = newQuantity;
     materialEntry.price = newQuantity * materialEntry.material.pricePerKg;
-
-    // If quantity is 0, remove the material
-    if (newQuantity === 0) {
-      materialEntry.remove();
-    }
 
     // Recalculate totals
     bin.totalQuantity = bin.materials.reduce((sum, m) => sum + m.quantity, 0);
@@ -198,8 +193,8 @@ exports.deleteBinItem = async (req, res) => {
       });
     }
 
-    // Remove the material
-    materialEntry.remove();
+    // Remove the material from the array
+    bin.materials.pull(itemId);
 
     // Recalculate totals
     bin.totalQuantity = bin.materials.reduce((sum, m) => sum + m.quantity, 0);
@@ -212,6 +207,49 @@ exports.deleteBinItem = async (req, res) => {
       data: {
         bin,
         message: "Material deleted successfully",
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Cancel seller order (for agents)
+exports.cancelSellerOrder = async (req, res) => {
+  try {
+    const { binId } = req.body;
+
+    const bin = await Bin.findOne({
+      _id: binId,
+      selectedAgent: req.user.id,
+      validationStatus: false, // Only allow cancellation before validation
+    });
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Bin not found or already validated",
+      });
+    }
+
+    // Delete the bin to cancel the order
+    await Bin.findByIdAndDelete(binId);
+
+    // Create notification for the seller about order cancellation
+    const agent = await User.findById(req.user.id);
+    await NotificationService.createOrderCancelledNotification(
+      bin.user, 
+      agent.firstName + ' ' + agent.lastName, 
+      binId
+    );
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        message: "Seller order cancelled successfully",
       },
     });
   } catch (error) {

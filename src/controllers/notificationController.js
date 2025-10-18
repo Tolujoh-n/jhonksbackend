@@ -177,6 +177,17 @@ const NotificationService = {
     );
   },
 
+  // Order cancelled notification
+  createOrderCancelledNotification: async (userId, agentName, binId) => {
+    return await createNotification(
+      userId,
+      "order_cancelled",
+      "Order Cancelled",
+      `Your order has been cancelled by agent ${agentName}. You can create a new order anytime.`,
+      { binId, agentName }
+    );
+  },
+
   // Agent selected notification
   createAgentSelectedNotification: async (userId, agentName) => {
     return await createNotification(

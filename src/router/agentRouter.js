@@ -7,6 +7,7 @@ const {
   validateBin,
   updateBinItemQuantity,
   deleteBinItem,
+  cancelSellerOrder,
   getValidationHistory,
   createDelivery,
   getDeliveryHistory,
@@ -29,6 +30,7 @@ router.get("/pending-validations", getPendingValidations);
 router.get("/validation-history", getValidationHistory);
 router.put("/update-bin-item", updateBinItemQuantity);
 router.delete("/delete-bin-item", deleteBinItem);
+router.post("/cancel-seller-order", cancelSellerOrder);
 router.post("/validate/:binId", validateBin);
 router.post("/delivery", createDelivery);
 router.get("/delivery-history", getDeliveryHistory);
