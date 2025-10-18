@@ -3,7 +3,18 @@ const Sale = require("../models/Sale");
 const Delivery = require("../models/Delivery");
 const Material = require("../models/Material");
 const Bin = require("../models/Bin");
+const AgentFee = require("../models/AgentFee");
 const { NotificationService } = require("./notificationController");
+
+// Helper function to get current agent fee
+const getCurrentAgentFee = async () => {
+  const currentFee = await AgentFee.findOne({ 
+    isActive: true,
+    effectiveTo: null 
+  }).sort({ effectiveFrom: -1 });
+
+  return currentFee ? currentFee.feePerKg : 20; // Default to 20 if no fee found
+};
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -205,15 +216,15 @@ exports.getDashboardStats = async (req, res) => {
   }
 };
 
-// Get pending validations (bins that are validated but not delivered)
+// Get pending validations (bins that are assigned to agents but not yet validated)
 exports.getPendingValidations = async (req, res) => {
   try {
     const { page = 1, limit = 20, search, state, agent } = req.query;
     const skip = (page - 1) * limit;
 
     let query = {
-      validationStatus: true,
-      deliveryStatus: false
+      selectedAgent: { $exists: true, $ne: null },
+      validationStatus: false
     };
 
     if (state) {
@@ -261,8 +272,6 @@ exports.getPendingValidations = async (req, res) => {
           _id: null,
           totalQuantity: { $sum: '$totalQuantity' },
           totalBins: { $sum: 1 },
-          soldBins: { $sum: { $cond: [{ $eq: ['$sold', true] }, 1, 0] } },
-          pendingSaleBins: { $sum: { $cond: [{ $eq: ['$sold', false] }, 1, 0] } },
           uniqueAgents: { $addToSet: '$selectedAgent' },
           uniqueStates: { $addToSet: '$user.state' }
         }
@@ -293,8 +302,6 @@ exports.getPendingValidations = async (req, res) => {
         stats: {
           totalQuantity: stats[0]?.totalQuantity || 0,
           totalBins: stats[0]?.totalBins || 0,
-          soldBins: stats[0]?.soldBins || 0,
-          pendingSaleBins: stats[0]?.pendingSaleBins || 0,
           uniqueAgents: stats[0]?.uniqueAgents?.length || 0,
           uniqueStates: stats[0]?.uniqueStates?.length || 0,
           quantityByState
@@ -309,7 +316,7 @@ exports.getPendingValidations = async (req, res) => {
   }
 };
 
-// Get validation history (bins that have been delivered)
+// Get validation history (bins that have been validated by agents)
 exports.getValidationHistory = async (req, res) => {
   try {
     const { page = 1, limit = 20, search, state, agent, status, date } = req.query;
@@ -317,7 +324,7 @@ exports.getValidationHistory = async (req, res) => {
 
     let query = {
       validationStatus: true,
-      deliveryStatus: true
+      selectedAgent: { $exists: true, $ne: null }
     };
 
     if (state) {
@@ -643,14 +650,35 @@ exports.updatePaymentStatus = async (req, res) => {
 };
 
 // Agent fee management
-let agentFeePerKg = 20; // Default fee
-
 exports.getAgentFee = async (req, res) => {
   try {
+    // Get the current active fee
+    const currentFee = await AgentFee.findOne({ 
+      isActive: true,
+      effectiveTo: null 
+    }).sort({ effectiveFrom: -1 });
+
+    // If no fee exists, create a default one
+    if (!currentFee) {
+      const defaultFee = await AgentFee.create({
+        feePerKg: 20,
+        isActive: true,
+        setBy: req.user.id,
+        effectiveFrom: new Date(),
+      });
+
+      return res.status(200).json({
+        status: "success",
+        data: {
+          feePerKg: defaultFee.feePerKg,
+        },
+      });
+    }
+
     res.status(200).json({
       status: "success",
       data: {
-        feePerKg: agentFeePerKg,
+        feePerKg: currentFee.feePerKg,
       },
     });
   } catch (error) {
@@ -672,12 +700,27 @@ exports.setAgentFee = async (req, res) => {
       });
     }
 
-    agentFeePerKg = feePerKg;
+    // Deactivate the current active fee
+    await AgentFee.updateMany(
+      { isActive: true, effectiveTo: null },
+      { 
+        isActive: false,
+        effectiveTo: new Date()
+      }
+    );
+
+    // Create new fee
+    const newFee = await AgentFee.create({
+      feePerKg,
+      isActive: true,
+      setBy: req.user.id,
+      effectiveFrom: new Date(),
+    });
 
     res.status(200).json({
       status: "success",
       data: {
-        feePerKg: agentFeePerKg,
+        feePerKg: newFee.feePerKg,
         message: "Agent fee updated successfully",
       },
     });

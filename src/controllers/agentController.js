@@ -1,7 +1,18 @@
 const User = require("../models/User");
 const Bin = require("../models/Bin");
 const Delivery = require("../models/Delivery");
+const AgentFee = require("../models/AgentFee");
 const { NotificationService } = require("./notificationController");
+
+// Helper function to get current agent fee
+const getCurrentAgentFee = async () => {
+  const currentFee = await AgentFee.findOne({ 
+    isActive: true,
+    effectiveTo: null 
+  }).sort({ effectiveFrom: -1 });
+
+  return currentFee ? currentFee.feePerKg : 20; // Default to 20 if no fee found
+};
 
 exports.registerAsAgent = async (req, res) => {
   try {
@@ -174,10 +185,13 @@ exports.getValidationHistory = async (req, res) => {
       .populate("user", "username firstName lastName")
       .populate("materials.material");
 
+    // Get current agent fee
+    const currentFee = await getCurrentAgentFee();
+
     const binsWithProfit = bins.map((bin) => {
       const materialsWithProfit = bin.materials.map((item) => ({
         ...item.toObject(),
-        agentProfit: item.quantity * 20, // 20 is the agent_profit_per_kg
+        agentProfit: item.quantity * currentFee,
       }));
 
       return {
@@ -187,14 +201,23 @@ exports.getValidationHistory = async (req, res) => {
           (sum, item) => sum + item.agentProfit,
           0
         ),
+        currentFeePerKg: currentFee,
       };
     });
+
+    // Calculate total earnings
+    const totalEarnings = binsWithProfit.reduce(
+      (sum, bin) => sum + bin.totalProfit,
+      0
+    );
 
     res.status(200).json({
       status: "success",
       results: binsWithProfit.length,
       data: {
         bins: binsWithProfit,
+        totalEarnings,
+        currentFeePerKg: currentFee,
       },
     });
   } catch (error) {
@@ -223,13 +246,16 @@ exports.createDelivery = async (req, res) => {
       });
     }
 
+    // Get current agent fee
+    const currentFee = await getCurrentAgentFee();
+
     const materials = [];
     let totalQuantity = 0;
     let totalProfit = 0;
 
     bins.forEach((bin) => {
       bin.materials.forEach((item) => {
-        const profit = item.quantity * 20; // 20 is the agent_profit_per_kg
+        const profit = item.quantity * currentFee;
         materials.push({
           material: item.material._id,
           quantity: item.quantity,
@@ -254,6 +280,7 @@ exports.createDelivery = async (req, res) => {
       status: "success",
       data: {
         delivery,
+        currentFeePerKg: currentFee,
       },
     });
   } catch (error) {
@@ -271,11 +298,25 @@ exports.getDeliveryHistory = async (req, res) => {
       .populate("agent", "firstName lastName email homeAddress")
       .sort("-createdAt");
 
+    // Calculate total earnings
+    const totalEarnings = deliveries.reduce(
+      (sum, delivery) => sum + delivery.totalProfit,
+      0
+    );
+
+    // Calculate total quantity delivered
+    const totalQuantityDelivered = deliveries.reduce(
+      (sum, delivery) => sum + delivery.totalQuantity,
+      0
+    );
+
     res.status(200).json({
       status: "success",
       results: deliveries.length,
       data: {
         deliveries,
+        totalEarnings,
+        totalQuantityDelivered,
       },
     });
   } catch (error) {
