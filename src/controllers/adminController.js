@@ -57,7 +57,7 @@ exports.getAllAgents = async (req, res) => {
 exports.getAllSales = async (req, res) => {
   try {
     const sales = await Sale.find()
-      .populate("user", "username email firstName lastName")
+      .populate("user", "username email firstName lastName phoneNumber homeAddress")
       .populate("materials.material")
       .sort("-createdAt");
 
