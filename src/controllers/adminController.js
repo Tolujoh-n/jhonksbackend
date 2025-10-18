@@ -871,7 +871,7 @@ exports.getAllDeliveries = async (req, res) => {
 
     // Get deliveries with population
     let deliveries = await Delivery.find(query)
-      .populate('agent', 'firstName lastName phoneNumber agentDetails')
+      .populate('agent', 'firstName lastName phoneNumber homeAddress agentDetails')
       .populate('materials.material', 'name category pricePerKg')
       .sort('-createdAt')
       .skip(skip)
