@@ -401,7 +401,7 @@ exports.getValidationHistory = async (req, res) => {
 
 exports.createDelivery = async (req, res) => {
   try {
-    const { binIds } = req.body;
+    const { binIds, selectedPaymentBank } = req.body;
 
     const bins = await Bin.find({
       _id: { $in: binIds },
@@ -437,12 +437,19 @@ exports.createDelivery = async (req, res) => {
       });
     });
 
+    console.log("Creating delivery with selectedPaymentBank:", selectedPaymentBank);
+    console.log("SelectedPaymentBank type:", typeof selectedPaymentBank);
+    
     const delivery = await Delivery.create({
       agent: req.user.id,
       materials,
       totalQuantity,
       totalProfit,
+      selectedPaymentBank: selectedPaymentBank || null,
     });
+    
+    console.log("Delivery created with ID:", delivery._id);
+    console.log("Delivery selectedPaymentBank:", delivery.selectedPaymentBank);
 
     // Update bins delivery status
     await Bin.updateMany({ _id: { $in: binIds } }, { deliveryStatus: true });

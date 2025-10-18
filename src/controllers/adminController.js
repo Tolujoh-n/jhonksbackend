@@ -5,6 +5,10 @@ const Material = require("../models/Material");
 const Bin = require("../models/Bin");
 const AgentFee = require("../models/AgentFee");
 const Bank = require("../models/Bank");
+
+// Test Bank model import
+console.log("Bank model imported:", !!Bank);
+console.log("Bank model name:", Bank.modelName);
 const { NotificationService } = require("./notificationController");
 
 // Helper function to get current agent fee
@@ -870,7 +874,7 @@ exports.getAllDeliveries = async (req, res) => {
       query.createdAt = { $gte: startDate, $lt: endDate };
     }
 
-    // Get deliveries with population
+    // Get deliveries with basic population first
     let deliveries = await Delivery.find(query)
       .populate('agent', 'firstName lastName phoneNumber homeAddress agentDetails')
       .populate('materials.material', 'name category pricePerKg')
@@ -878,17 +882,72 @@ exports.getAllDeliveries = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Get bank details for each agent
-    for (let delivery of deliveries) {
+    // Debug: Check what we have before population
+    console.log("Before population - First delivery selectedPaymentBank:", deliveries[0]?.selectedPaymentBank);
+    console.log("Type:", typeof deliveries[0]?.selectedPaymentBank);
+    
+    // Test Bank model functionality
+    if (deliveries.length > 0 && deliveries[0]?.selectedPaymentBank) {
+      console.log("Testing Bank model with ID:", deliveries[0].selectedPaymentBank);
+      try {
+        const testBank = await Bank.findById(deliveries[0].selectedPaymentBank);
+        console.log("Test bank query result:", testBank);
+      } catch (error) {
+        console.error("Test bank query error:", error);
+      }
+    }
+
+    // Convert agent objects to plain objects for proper serialization
+    deliveries.forEach(delivery => {
       if (delivery.agent) {
-        const bankDetails = await Bank.find({ user: delivery.agent._id });
-        // Convert to plain object to ensure proper serialization
         delivery.agent = delivery.agent.toObject();
-        delivery.agent.bankAccounts = bankDetails;
-        console.log(`Bank details for agent ${delivery.agent._id}:`, bankDetails.length, 'accounts found');
-        if (bankDetails.length > 0) {
-          console.log('First bank account:', bankDetails[0]);
+      }
+    });
+
+    // Always manually populate selectedPaymentBank for all deliveries
+    for (let delivery of deliveries) {
+      if (delivery.selectedPaymentBank) {
+        try {
+          console.log(`=== DELIVERY ${delivery._id} ===`);
+          console.log(`Original selectedPaymentBank:`, delivery.selectedPaymentBank);
+          console.log(`Type:`, typeof delivery.selectedPaymentBank);
+          
+          // Test if the bank ID is valid ObjectId
+          const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(delivery.selectedPaymentBank);
+          console.log(`Is valid ObjectId:`, isValidObjectId);
+          
+          const bankDetails = await Bank.findById(delivery.selectedPaymentBank);
+          console.log(`Bank query result:`, bankDetails);
+          console.log(`Bank exists:`, !!bankDetails);
+          console.log(`Bank ID searched:`, delivery.selectedPaymentBank);
+          
+          if (bankDetails) {
+            console.log(`Raw bank details from DB:`, bankDetails);
+            console.log(`Bank name:`, bankDetails.bankName);
+            console.log(`Account number:`, bankDetails.accountNumber);
+            console.log(`Account name:`, bankDetails.accountName);
+            
+            // Convert to plain object and assign
+            const bankObject = bankDetails.toObject();
+            delivery.selectedPaymentBank = bankObject;
+            
+            console.log(`After assignment:`, delivery.selectedPaymentBank);
+            console.log(`Final bank name:`, delivery.selectedPaymentBank.bankName);
+            console.log(`Final type:`, typeof delivery.selectedPaymentBank);
+            console.log(`=== END DELIVERY ${delivery._id} ===`);
+          } else {
+            console.log(`Bank not found for ID: ${delivery.selectedPaymentBank}`);
+            // Try to find any bank with similar ID
+            const allBanks = await Bank.find({});
+            console.log(`All banks in DB:`, allBanks.map(b => ({ id: b._id, name: b.bankName })));
+            delivery.selectedPaymentBank = null;
+          }
+        } catch (error) {
+          console.error(`Error fetching bank for delivery ${delivery._id}:`, error);
+          delivery.selectedPaymentBank = null;
         }
+      } else {
+        console.log(`Delivery ${delivery._id} has no selectedPaymentBank`);
       }
     }
 
@@ -966,9 +1025,18 @@ exports.getAllDeliveries = async (req, res) => {
       { $sort: { quantity: -1 } }
     ]);
 
-    // Debug: Log first delivery to check bank accounts
+    // Debug: Log first delivery to check selectedPaymentBank
     if (deliveries.length > 0) {
-      console.log("First delivery agent bank accounts:", deliveries[0].agent?.bankAccounts?.length || 0);
+      console.log("=== FINAL RESULT ===");
+      console.log("First delivery selectedPaymentBank:", deliveries[0].selectedPaymentBank);
+      console.log("Type:", typeof deliveries[0].selectedPaymentBank);
+      console.log("Is object:", typeof deliveries[0].selectedPaymentBank === 'object');
+      if (deliveries[0].selectedPaymentBank && typeof deliveries[0].selectedPaymentBank === 'object') {
+        console.log("Bank name:", deliveries[0].selectedPaymentBank.bankName);
+        console.log("Account number:", deliveries[0].selectedPaymentBank.accountNumber);
+        console.log("Account name:", deliveries[0].selectedPaymentBank.accountName);
+      }
+      console.log("=== END FINAL RESULT ===");
     }
 
     res.status(200).json({

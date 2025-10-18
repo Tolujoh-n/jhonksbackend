@@ -82,6 +82,11 @@ const userSchema = new mongoose.Schema({
       default: false,
     },
   },
+  selectedPaymentBank: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Bank",
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

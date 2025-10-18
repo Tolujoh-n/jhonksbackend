@@ -41,6 +41,11 @@ const deliverySchema = new mongoose.Schema({
     enum: ["processing", "paid"],
     default: "processing",
   },
+  selectedPaymentBank: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Bank",
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
