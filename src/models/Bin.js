@@ -48,6 +48,10 @@ const binSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  saleConfirmed: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

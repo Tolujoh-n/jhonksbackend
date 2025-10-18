@@ -326,3 +326,39 @@ exports.getDeliveryHistory = async (req, res) => {
     });
   }
 };
+
+// Confirm sale for a bin
+exports.confirmSale = async (req, res) => {
+  try {
+    const { binId } = req.params;
+
+    const bin = await Bin.findOne({
+      _id: binId,
+      selectedAgent: req.user.id,
+      validationStatus: true,
+    });
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Bin not found or not validated by you",
+      });
+    }
+
+    bin.saleConfirmed = true;
+    await bin.save();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        bin,
+        message: "Sale confirmed successfully",
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};

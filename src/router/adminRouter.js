@@ -16,6 +16,7 @@ const {
   updatePaymentStatus,
   getAgentFee,
   setAgentFee,
+  moveToDeliveryHistory,
 } = require("../controllers/adminController");
 
 router.use(protect);
@@ -37,5 +38,6 @@ router.get("/deliveries-enhanced", getAllDeliveriesEnhanced);
 router.patch("/deliveries/:id/payment", updatePaymentStatus);
 router.get("/agent-fee", getAgentFee);
 router.post("/agent-fee", setAgentFee);
+router.post("/validation-history/:binId/move-to-delivery", moveToDeliveryHistory);
 
 module.exports = router;

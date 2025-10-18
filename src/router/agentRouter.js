@@ -10,6 +10,7 @@ const {
   getDeliveryHistory,
   getAllAgentsPublic,
   getAgentByIdPublic,
+  confirmSale,
 } = require("../controllers/agentController");
 
 //Authenticated routes
@@ -27,5 +28,6 @@ router.get("/validation-history", getValidationHistory);
 router.post("/validate/:binId", validateBin);
 router.post("/delivery", createDelivery);
 router.get("/delivery-history", getDeliveryHistory);
+router.post("/confirm-sale/:binId", confirmSale);
 
 module.exports = router;

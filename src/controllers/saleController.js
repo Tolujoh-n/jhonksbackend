@@ -21,6 +21,7 @@ exports.createSale = async (req, res) => {
     }
 
     bin.sold = true;
+    bin.saleConfirmed = true;
     await bin.save();
 
     if (!bin.validationStatus) {

@@ -302,8 +302,8 @@ exports.getPendingValidations = async (req, res) => {
         stats: {
           totalQuantity: stats[0]?.totalQuantity || 0,
           totalBins: stats[0]?.totalBins || 0,
-          uniqueAgents: stats[0]?.uniqueAgents?.length || 0,
-          uniqueStates: stats[0]?.uniqueStates?.length || 0,
+          totalAgents: stats[0]?.uniqueAgents?.length || 0,
+          totalStates: stats[0]?.uniqueStates?.length || 0,
           quantityByState
         }
       },
@@ -405,6 +405,17 @@ exports.getValidationHistory = async (req, res) => {
       }
     ]);
 
+    const quantityByState = await Bin.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: '$user.state',
+          quantity: { $sum: '$totalQuantity' }
+        }
+      },
+      { $sort: { quantity: -1 } }
+    ]);
+
     res.status(200).json({
       status: "success",
       data: {
@@ -418,9 +429,10 @@ exports.getValidationHistory = async (req, res) => {
         stats: {
           totalQuantity: stats[0]?.totalQuantity || 0,
           totalBins: stats[0]?.totalBins || 0,
-          uniqueAgents: stats[0]?.uniqueAgents?.length || 0,
-          uniqueStates: stats[0]?.uniqueStates?.length || 0,
-          completedToday: stats[0]?.completedToday || 0
+          totalAgents: stats[0]?.uniqueAgents?.length || 0,
+          totalStates: stats[0]?.uniqueStates?.length || 0,
+          completedToday: stats[0]?.completedToday || 0,
+          quantityByState
         }
       },
     });
@@ -722,6 +734,75 @@ exports.setAgentFee = async (req, res) => {
       data: {
         feePerKg: newFee.feePerKg,
         message: "Agent fee updated successfully",
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Move completed validation to delivery history
+exports.moveToDeliveryHistory = async (req, res) => {
+  try {
+    const { binId } = req.params;
+
+    const bin = await Bin.findById(binId)
+      .populate('user', 'firstName lastName phoneNumber state homeAddress')
+      .populate('selectedAgent', 'firstName lastName phoneNumber agentDetails')
+      .populate('materials.material', 'name category pricePerKg');
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Bin not found",
+      });
+    }
+
+    if (!bin.validationStatus) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Bin must be validated before moving to delivery history",
+      });
+    }
+
+    if (bin.deliveryStatus) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Bin is already in delivery history",
+      });
+    }
+
+    // Get current agent fee for this validation
+    const currentFee = await getCurrentAgentFee();
+
+    // Create delivery record
+    const materials = bin.materials.map((item) => ({
+      material: item.material._id,
+      quantity: item.quantity,
+      profit: item.quantity * currentFee,
+    }));
+
+    const delivery = await Delivery.create({
+      agent: bin.selectedAgent._id,
+      materials,
+      totalQuantity: bin.totalQuantity,
+      totalProfit: bin.totalQuantity * currentFee,
+      pickupStatus: "In-Store",
+      agentPaymentStatus: "processing",
+    });
+
+    // Update bin delivery status
+    bin.deliveryStatus = true;
+    await bin.save();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        delivery,
+        message: "Bin moved to delivery history successfully",
       },
     });
   } catch (error) {
