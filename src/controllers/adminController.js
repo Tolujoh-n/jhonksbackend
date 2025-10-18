@@ -4,6 +4,7 @@ const Delivery = require("../models/Delivery");
 const Material = require("../models/Material");
 const Bin = require("../models/Bin");
 const AgentFee = require("../models/AgentFee");
+const Bank = require("../models/Bank");
 const { NotificationService } = require("./notificationController");
 
 // Helper function to get current agent fee
@@ -877,6 +878,20 @@ exports.getAllDeliveries = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    // Get bank details for each agent
+    for (let delivery of deliveries) {
+      if (delivery.agent) {
+        const bankDetails = await Bank.find({ user: delivery.agent._id });
+        // Convert to plain object to ensure proper serialization
+        delivery.agent = delivery.agent.toObject();
+        delivery.agent.bankAccounts = bankDetails;
+        console.log(`Bank details for agent ${delivery.agent._id}:`, bankDetails.length, 'accounts found');
+        if (bankDetails.length > 0) {
+          console.log('First bank account:', bankDetails[0]);
+        }
+      }
+    }
+
     // Apply search filter after population
     if (search) {
       deliveries = deliveries.filter(delivery => {
@@ -950,6 +965,11 @@ exports.getAllDeliveries = async (req, res) => {
       },
       { $sort: { quantity: -1 } }
     ]);
+
+    // Debug: Log first delivery to check bank accounts
+    if (deliveries.length > 0) {
+      console.log("First delivery agent bank accounts:", deliveries[0].agent?.bankAccounts?.length || 0);
+    }
 
     res.status(200).json({
       status: "success",
