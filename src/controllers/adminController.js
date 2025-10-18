@@ -268,12 +268,20 @@ exports.getPendingValidations = async (req, res) => {
     const stats = await Bin.aggregate([
       { $match: query },
       {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userData'
+        }
+      },
+      {
         $group: {
           _id: null,
           totalQuantity: { $sum: '$totalQuantity' },
           totalBins: { $sum: 1 },
           uniqueAgents: { $addToSet: '$selectedAgent' },
-          uniqueStates: { $addToSet: '$user.state' }
+          uniqueStates: { $addToSet: { $arrayElemAt: ['$userData.state', 0] } }
         }
       }
     ]);
@@ -281,8 +289,16 @@ exports.getPendingValidations = async (req, res) => {
     const quantityByState = await Bin.aggregate([
       { $match: query },
       {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userData'
+        }
+      },
+      {
         $group: {
-          _id: '$user.state',
+          _id: { $arrayElemAt: ['$userData.state', 0] },
           quantity: { $sum: '$totalQuantity' }
         }
       },
@@ -324,7 +340,8 @@ exports.getValidationHistory = async (req, res) => {
 
     let query = {
       validationStatus: true,
-      selectedAgent: { $exists: true, $ne: null }
+      selectedAgent: { $exists: true, $ne: null },
+      deliveryStatus: false  // Only show items that haven't been delivered
     };
 
     if (state) {
@@ -379,12 +396,20 @@ exports.getValidationHistory = async (req, res) => {
     const stats = await Bin.aggregate([
       { $match: query },
       {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userData'
+        }
+      },
+      {
         $group: {
           _id: null,
           totalQuantity: { $sum: '$totalQuantity' },
           totalBins: { $sum: 1 },
           uniqueAgents: { $addToSet: '$selectedAgent' },
-          uniqueStates: { $addToSet: '$user.state' },
+          uniqueStates: { $addToSet: { $arrayElemAt: ['$userData.state', 0] } },
           completedToday: {
             $sum: {
               $cond: [
@@ -408,8 +433,16 @@ exports.getValidationHistory = async (req, res) => {
     const quantityByState = await Bin.aggregate([
       { $match: query },
       {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userData'
+        }
+      },
+      {
         $group: {
-          _id: '$user.state',
+          _id: { $arrayElemAt: ['$userData.state', 0] },
           quantity: { $sum: '$totalQuantity' }
         }
       },
@@ -803,6 +836,140 @@ exports.moveToDeliveryHistory = async (req, res) => {
       data: {
         delivery,
         message: "Bin moved to delivery history successfully",
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Get all deliveries (admin)
+exports.getAllDeliveries = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, agent, status, date } = req.query;
+    const skip = (page - 1) * limit;
+
+    let query = {};
+
+    if (agent) {
+      query.agent = agent;
+    }
+
+    if (status) {
+      query.pickupStatus = status;
+    }
+
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+      query.createdAt = { $gte: startDate, $lt: endDate };
+    }
+
+    // Get deliveries with population
+    let deliveries = await Delivery.find(query)
+      .populate('agent', 'firstName lastName phoneNumber agentDetails')
+      .populate('materials.material', 'name category pricePerKg')
+      .sort('-createdAt')
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Apply search filter after population
+    if (search) {
+      deliveries = deliveries.filter(delivery => {
+        const agent = delivery.agent;
+        const searchLower = search.toLowerCase();
+        
+        return (
+          (agent?.firstName?.toLowerCase().includes(searchLower)) ||
+          (agent?.lastName?.toLowerCase().includes(searchLower)) ||
+          (agent?.phoneNumber?.includes(search))
+        );
+      });
+    }
+
+    const total = await Delivery.countDocuments(query);
+
+    // Calculate stats
+    const stats = await Delivery.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'agent',
+          foreignField: '_id',
+          as: 'agentData'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalQuantity: { $sum: '$totalQuantity' },
+          totalDeliveries: { $sum: 1 },
+          totalProfit: { $sum: '$totalProfit' },
+          uniqueAgents: { $addToSet: '$agent' },
+          uniqueStates: { $addToSet: { $arrayElemAt: ['$agentData.agentDetails.localGovernmentAddress', 0] } },
+          completedToday: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$pickupStatus', 'Delivered'] },
+                    {
+                      $gte: ['$createdAt', new Date(new Date().setHours(0, 0, 0, 0))]
+                    }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const quantityByState = await Delivery.aggregate([
+      { $match: query },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'agent',
+          foreignField: '_id',
+          as: 'agentData'
+        }
+      },
+      {
+        $group: {
+          _id: { $arrayElemAt: ['$agentData.agentDetails.localGovernmentAddress', 0] },
+          quantity: { $sum: '$totalQuantity' }
+        }
+      },
+      { $sort: { quantity: -1 } }
+    ]);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        deliveries,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: parseInt(limit)
+        },
+        stats: {
+          totalQuantity: stats[0]?.totalQuantity || 0,
+          totalDeliveries: stats[0]?.totalDeliveries || 0,
+          totalProfit: stats[0]?.totalProfit || 0,
+          totalAgents: stats[0]?.uniqueAgents?.length || 0,
+          totalStates: stats[0]?.uniqueStates?.length || 0,
+          completedToday: stats[0]?.completedToday || 0,
+          quantityByState
+        }
       },
     });
   } catch (error) {
