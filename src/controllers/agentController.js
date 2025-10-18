@@ -99,17 +99,138 @@ exports.getPendingValidations = async (req, res) => {
   }
 };
 
+// Update bin item quantity during validation (for agents)
+exports.updateBinItemQuantity = async (req, res) => {
+  try {
+    const { binId, itemId, newQuantity } = req.body;
+
+    if (newQuantity < 0) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Quantity cannot be negative",
+      });
+    }
+
+    const bin = await Bin.findOne({
+      _id: binId,
+      selectedAgent: req.user.id,
+      validationStatus: false, // Only allow updates before validation
+    }).populate("materials.material");
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Bin not found or already validated",
+      });
+    }
+
+    const materialEntry = bin.materials.id(itemId);
+
+    if (!materialEntry) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Material not found in bin",
+      });
+    }
+
+    // Update quantity
+    materialEntry.quantity = newQuantity;
+    materialEntry.price = newQuantity * materialEntry.material.pricePerKg;
+
+    // If quantity is 0, remove the material
+    if (newQuantity === 0) {
+      materialEntry.remove();
+    }
+
+    // Recalculate totals
+    bin.totalQuantity = bin.materials.reduce((sum, m) => sum + m.quantity, 0);
+    bin.totalPrice = bin.materials.reduce((sum, m) => sum + m.price, 0);
+
+    await bin.save();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        bin,
+        message: "Quantity updated successfully",
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Delete bin item during validation (for agents)
+exports.deleteBinItem = async (req, res) => {
+  try {
+    const { binId, itemId } = req.body;
+
+    const bin = await Bin.findOne({
+      _id: binId,
+      selectedAgent: req.user.id,
+      validationStatus: false, // Only allow updates before validation
+    }).populate("materials.material");
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Bin not found or already validated",
+      });
+    }
+
+    const materialEntry = bin.materials.id(itemId);
+
+    if (!materialEntry) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Material not found in bin",
+      });
+    }
+
+    // Check if this is the last material
+    if (bin.materials.length === 1) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Cannot delete the last material. This would cancel the seller's order.",
+      });
+    }
+
+    // Remove the material
+    materialEntry.remove();
+
+    // Recalculate totals
+    bin.totalQuantity = bin.materials.reduce((sum, m) => sum + m.quantity, 0);
+    bin.totalPrice = bin.materials.reduce((sum, m) => sum + m.price, 0);
+
+    await bin.save();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        bin,
+        message: "Material deleted successfully",
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
 exports.validateBin = async (req, res) => {
   try {
     const { binId } = req.params;
-    // const { materials } = req.body;
+    const { materials } = req.body;
 
     const bin = await Bin.findOne({
       _id: binId,
       selectedAgent: req.user.id,
     });
-
-    console.log("check this is the bin found", bin);
 
     if (!bin) {
       return res.status(404).json({
@@ -118,7 +239,19 @@ exports.validateBin = async (req, res) => {
       });
     }
 
-    // bin.materials = materials;
+    // Update materials if provided
+    if (materials && materials.length > 0) {
+      bin.materials = materials.map(item => ({
+        material: item.material_id,
+        quantity: item.quantity,
+        price: item.quantity * (bin.materials.find(m => m._id.toString() === item.material_id)?.material?.pricePerKg || 0)
+      }));
+      
+      // Recalculate totals
+      bin.totalQuantity = bin.materials.reduce((sum, m) => sum + m.quantity, 0);
+      bin.totalPrice = bin.materials.reduce((sum, m) => sum + m.price, 0);
+    }
+
     bin.validationStatus = true;
     await bin.save();
 

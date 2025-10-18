@@ -5,6 +5,8 @@ const {
   registerAsAgent,
   getPendingValidations,
   validateBin,
+  updateBinItemQuantity,
+  deleteBinItem,
   getValidationHistory,
   createDelivery,
   getDeliveryHistory,
@@ -25,6 +27,8 @@ router.get("/:id([0-9a-fA-F]{24})", getAgentByIdPublic);
 router.use(restrictTo("agent"));
 router.get("/pending-validations", getPendingValidations);
 router.get("/validation-history", getValidationHistory);
+router.put("/update-bin-item", updateBinItemQuantity);
+router.delete("/delete-bin-item", deleteBinItem);
 router.post("/validate/:binId", validateBin);
 router.post("/delivery", createDelivery);
 router.get("/delivery-history", getDeliveryHistory);
