@@ -53,14 +53,14 @@ app.use(
 
 app.use(cookieParser());
 
-// Database connection with optimized settings
+// Database connection with optimized settings for timeout issues
 const mongooseOptions = {
-  // Connection timeout settings
-  serverSelectionTimeoutMS: 30000, // 30 seconds
-  socketTimeoutMS: 45000, // 45 seconds
-  connectTimeoutMS: 30000, // 30 seconds
+  // Increase timeouts to handle slow connections
+  serverSelectionTimeoutMS: 30000, // 30 seconds (default is 10s)
+  socketTimeoutMS: 45000, // 45 seconds (default is 30s)
+  connectTimeoutMS: 30000, // 30 seconds (default is 10s)
   
-  // Connection pool settings
+  // Connection pool settings for better performance
   maxPoolSize: 10, // Maintain up to 10 socket connections
   minPoolSize: 5, // Maintain a minimum of 5 socket connections
   maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
@@ -69,7 +69,7 @@ const mongooseOptions = {
   retryWrites: true,
   retryReads: true,
   
-  // Heartbeat settings
+  // Heartbeat settings to keep connection alive
   heartbeatFrequencyMS: 10000, // Send a ping every 10 seconds
   
   // Compression
@@ -88,7 +88,7 @@ mongoose
     console.log("Connection string:", process.env.MONGODB_URI ? "Using Atlas" : "Using local");
   });
 
-// Connection event handlers
+// Connection event handlers for monitoring
 mongoose.connection.on('connected', () => {
   console.log('🟢 Mongoose connected to MongoDB');
 });
@@ -101,7 +101,7 @@ mongoose.connection.on('disconnected', () => {
   console.log('🟡 Mongoose disconnected from MongoDB');
 });
 
-// Handle application termination
+// Handle application termination gracefully
 process.on('SIGINT', async () => {
   try {
     await mongoose.connection.close();
@@ -137,7 +137,17 @@ app.get("/health", (req, res) => {
 // Database health check endpoint
 app.get("/health/db", async (req, res) => {
   try {
-    // Test database connection
+    // Check connection state first
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        status: "error",
+        message: "Database connection is not established",
+        timestamp: new Date().toISOString(),
+        connectionState: mongoose.connection.readyState,
+      });
+    }
+    
+    // Test database connection with a simple query
     await mongoose.connection.db.admin().ping();
     
     res.status(200).json({
