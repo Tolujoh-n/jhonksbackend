@@ -39,12 +39,22 @@ exports.createSale = async (req, res) => {
       });
     }
 
+    // Ensure totalPrice is calculated correctly
+    let calculatedTotalPrice = bin.totalPrice;
+    if (!calculatedTotalPrice || calculatedTotalPrice === 0) {
+      calculatedTotalPrice = bin.materials.reduce((sum, item) => {
+        const quantity = item.quantity || 0;
+        const pricePerKg = item.material?.pricePerKg || 0;
+        return sum + (quantity * pricePerKg);
+      }, 0);
+    }
+
     const sale = await Sale.create({
       user: req.user.id,
       bin: binId,
       materials: bin.materials,
       totalQuantity: bin.totalQuantity,
-      totalPrice: bin.totalPrice,
+      totalPrice: calculatedTotalPrice,
       bankDetails: {
         bankName: bankDetails.bankName,
         accountNumber: bankDetails.accountNumber,

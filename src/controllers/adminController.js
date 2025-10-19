@@ -517,31 +517,28 @@ exports.getAllSalesEnhanced = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    // Ensure totalPrice is calculated correctly for each sale
+    sales.forEach(sale => {
+      if (!sale.totalPrice || sale.totalPrice === 0) {
+        sale.totalPrice = sale.materials.reduce((sum, item) => {
+          const quantity = item.quantity || 0;
+          const pricePerKg = item.material?.pricePerKg || 0;
+          return sum + (quantity * pricePerKg);
+        }, 0);
+      }
+    });
+
     const total = await Sale.countDocuments(query);
 
-    // Calculate stats
-    const stats = await Sale.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalPrice' },
-          totalSales: { $sum: 1 },
-          paidSales: {
-            $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] }
-          },
-          processingSales: {
-            $sum: { $cond: [{ $eq: ['$status', 'processing'] }, 1, 0] }
-          },
-          paidAmount: {
-            $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$totalPrice', 0] }
-          },
-          processingAmount: {
-            $sum: { $cond: [{ $eq: ['$status', 'processing'] }, '$totalPrice', 0] }
-          }
-        }
-      }
-    ]);
+    // Calculate stats using the corrected sales data
+    const stats = [{
+      totalRevenue: sales.reduce((sum, sale) => sum + (sale.totalPrice || 0), 0),
+      totalSales: sales.length,
+      paidSales: sales.filter(sale => sale.status === 'paid').length,
+      processingSales: sales.filter(sale => sale.status === 'processing').length,
+      paidAmount: sales.filter(sale => sale.status === 'paid').reduce((sum, sale) => sum + (sale.totalPrice || 0), 0),
+      processingAmount: sales.filter(sale => sale.status === 'processing').reduce((sum, sale) => sum + (sale.totalPrice || 0), 0)
+    }];
 
     res.status(200).json({
       status: "success",
