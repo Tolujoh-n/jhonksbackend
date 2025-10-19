@@ -53,11 +53,65 @@ app.use(
 
 app.use(cookieParser());
 
-// Database connection
+// Database connection with optimized settings
+const mongooseOptions = {
+  // Connection timeout settings
+  serverSelectionTimeoutMS: 30000, // 30 seconds
+  socketTimeoutMS: 45000, // 45 seconds
+  connectTimeoutMS: 30000, // 30 seconds
+  
+  // Connection pool settings
+  maxPoolSize: 10, // Maintain up to 10 socket connections
+  minPoolSize: 5, // Maintain a minimum of 5 socket connections
+  maxIdleTimeMS: 30000, // Close connections after 30 seconds of inactivity
+  
+  // Retry settings
+  retryWrites: true,
+  retryReads: true,
+  
+  // Heartbeat settings
+  heartbeatFrequencyMS: 10000, // Send a ping every 10 seconds
+  
+  // Compression
+  compressors: ['zlib'],
+  
+  // Write concern
+  w: 'majority',
+  journal: true, // Request acknowledgment that the write has been written to the journal
+};
+
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db")
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.log("❌ MongoDB connection error:", err));
+  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db", mongooseOptions)
+  .then(() => console.log("✅ Connected to MongoDB with optimized settings"))
+  .catch((err) => {
+    console.log("❌ MongoDB connection error:", err);
+    console.log("Connection string:", process.env.MONGODB_URI ? "Using Atlas" : "Using local");
+  });
+
+// Connection event handlers
+mongoose.connection.on('connected', () => {
+  console.log('🟢 Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('🔴 Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('🟡 Mongoose disconnected from MongoDB');
+});
+
+// Handle application termination
+process.on('SIGINT', async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('🔴 Mongoose connection closed through app termination');
+    process.exit(0);
+  } catch (err) {
+    console.error('Error closing mongoose connection:', err);
+    process.exit(1);
+  }
+});
 
 // Routes
 app.get("/", (req, res) => {
@@ -68,6 +122,20 @@ app.get("/", (req, res) => {
   });
 });
 
+
+// Database connection middleware
+app.use("/api", (req, res, next) => {
+  // Check if database is connected
+  if (mongoose.connection.readyState !== 1) {
+    console.warn(`⚠️ Database not connected. State: ${mongoose.connection.readyState}`);
+    return res.status(503).json({
+      status: "error",
+      message: "Database connection is not available. Please try again later.",
+      timestamp: new Date().toISOString(),
+    });
+  }
+  next();
+});
 
 app.use("/api", rootRouter);
 
@@ -80,12 +148,59 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Database health check endpoint
+app.get("/health/db", async (req, res) => {
+  try {
+    // Test database connection
+    await mongoose.connection.db.admin().ping();
+    
+    res.status(200).json({
+      status: "success",
+      message: "Database connection is healthy",
+      timestamp: new Date().toISOString(),
+      connectionState: mongoose.connection.readyState, // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: "error",
+      message: "Database connection is unhealthy",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+      connectionState: mongoose.connection.readyState,
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Global error handler:', err);
+  
+  // Handle database timeout errors specifically
+  if (err.message?.includes('buffering timed out') || 
+      err.message?.includes('timeout') ||
+      err.code === 'ETIMEDOUT' ||
+      err.name === 'MongoTimeoutError') {
+    return res.status(503).json({
+      status: "error",
+      message: "Database connection timeout. Please try again in a moment.",
+      retryAfter: 5,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  
+  // Handle MongoDB connection errors
+  if (err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError') {
+    return res.status(503).json({
+      status: "error",
+      message: "Database connection is temporarily unavailable. Please try again later.",
+      timestamp: new Date().toISOString(),
+    });
+  }
+  
   res.status(500).json({
     status: "error",
     message: "Something went wrong!",
+    timestamp: new Date().toISOString(),
   });
 });
 

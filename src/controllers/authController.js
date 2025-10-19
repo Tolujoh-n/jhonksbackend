@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { checkReferralOnRegistration } = require("./referralController");
 const { NotificationService } = require("./notificationController");
+const { retryDatabaseOperation } = require("../utils/dbRetry");
 
 exports.register = async (req, res) => {
   try {
@@ -66,9 +67,11 @@ exports.login = async (req, res) => {
   try {
     const { emailOrUsername, password } = req.body;
 
-    const user = await User.findOne({
-      $or: [{ email: emailOrUsername }, { username: emailOrUsername }],
-    }).select("+password");
+    const user = await retryDatabaseOperation(async () => {
+      return await User.findOne({
+        $or: [{ email: emailOrUsername }, { username: emailOrUsername }],
+      }).select("+password");
+    });
 
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({
@@ -95,9 +98,22 @@ exports.login = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Login error:', error);
+    
+    // Handle specific database timeout errors
+    if (error.message?.includes('buffering timed out') || 
+        error.message?.includes('timeout') ||
+        error.code === 'ETIMEDOUT') {
+      return res.status(503).json({
+        status: "fail",
+        message: "Database connection timeout. Please try again in a moment.",
+        retryAfter: 5, // seconds
+      });
+    }
+    
     res.status(400).json({
       status: "fail",
-      message: error.message,
+      message: error.message || "An error occurred during login",
     });
   }
 };
