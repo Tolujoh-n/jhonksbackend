@@ -120,7 +120,9 @@ exports.login = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await retryDatabaseOperation(async () => {
+      return await User.findById(req.user.id);
+    });
     res.status(200).json({
       status: "success",
       data: {
@@ -141,9 +143,22 @@ exports.getMe = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('GetMe error:', error);
+    
+    // Handle specific database timeout errors
+    if (error.message?.includes('buffering timed out') || 
+        error.message?.includes('timeout') ||
+        error.code === 'ETIMEDOUT') {
+      return res.status(503).json({
+        status: "fail",
+        message: "Database connection timeout. Please try again in a moment.",
+        retryAfter: 5,
+      });
+    }
+    
     res.status(400).json({
       status: "fail",
-      message: error.message,
+      message: error.message || "An error occurred while fetching user data",
     });
   }
 };

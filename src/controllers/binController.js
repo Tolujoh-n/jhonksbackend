@@ -2,6 +2,7 @@ const Bin = require("../models/Bin");
 const Material = require("../models/Material");
 const User = require("../models/User");
 const { NotificationService } = require("./notificationController");
+const { retryDatabaseOperation } = require("../utils/dbRetry");
 
 exports.createBin = async (req, res) => {
   try {
@@ -25,30 +26,34 @@ exports.createBin = async (req, res) => {
 
 exports.getMyBin = async (req, res) => {
   try {
-    let bin = await Bin.findOne({
-      user: req.user.id,
-      sold: false,
-      // $or: [
-      //   { validationStatus: false },
-      //   { validationStatus: { $exists: false } },
-      // ],
-    })
-      .populate("materials.material")
-      .populate(
-        "selectedAgent",
+    let bin = await retryDatabaseOperation(async () => {
+      return await Bin.findOne({
+        user: req.user.id,
+        sold: false,
+        // $or: [
+        //   { validationStatus: false },
+        //   { validationStatus: { $exists: false } },
+        // ],
+      })
+        .populate("materials.material")
+        .populate(
+          "selectedAgent",
         "username firstName lastName phoneNumber state agentDetails"
       );
+    });
 
     // If no bin found, create an empty one for the user
     if (!bin) {
-      bin = await Bin.create({
-        user: req.user.id,
-        materials: [],
-        totalPrice: 0,
+      bin = await retryDatabaseOperation(async () => {
+        return await Bin.create({
+          user: req.user.id,
+          materials: [],
+          totalPrice: 0,
         totalQuantity: 0,
         sold: false,
         validationStatus: false,
         selectedAgent: null,
+        });
       });
     }
 
@@ -59,9 +64,22 @@ exports.getMyBin = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('GetMyBin error:', error);
+    
+    // Handle specific database timeout errors
+    if (error.message?.includes('buffering timed out') || 
+        error.message?.includes('timeout') ||
+        error.code === 'ETIMEDOUT') {
+      return res.status(503).json({
+        status: "fail",
+        message: "Database connection timeout. Please try again in a moment.",
+        retryAfter: 5,
+      });
+    }
+    
     res.status(400).json({
       status: "fail",
-      message: error.message,
+      message: error.message || "An error occurred while fetching bin data",
     });
   }
 };

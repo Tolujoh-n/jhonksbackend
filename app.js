@@ -123,20 +123,6 @@ app.get("/", (req, res) => {
 });
 
 
-// Database connection middleware
-app.use("/api", (req, res, next) => {
-  // Check if database is connected
-  if (mongoose.connection.readyState !== 1) {
-    console.warn(`⚠️ Database not connected. State: ${mongoose.connection.readyState}`);
-    return res.status(503).json({
-      status: "error",
-      message: "Database connection is not available. Please try again later.",
-      timestamp: new Date().toISOString(),
-    });
-  }
-  next();
-});
-
 app.use("/api", rootRouter);
 
 // Health check endpoint
