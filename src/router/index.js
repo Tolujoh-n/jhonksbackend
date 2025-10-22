@@ -13,6 +13,7 @@ const notificationRouter = require("./notificationRouter");
 const bountyRouter = require("./bountyRouter");
 const contactRouter = require("./contactRouter");
 const newsletterRouter = require("./newsletterRouter");
+const appUpdateRouter = require("./appUpdateRouter");
 
 const router = express.Router();
 
@@ -31,5 +32,6 @@ router.use("/notifications", notificationRouter);
 router.use("/bounty", bountyRouter);
 router.use("/contact", contactRouter);
 router.use("/newsletter", newsletterRouter);
+router.use("/app-updates", appUpdateRouter);
 
 module.exports = router;
