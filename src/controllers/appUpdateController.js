@@ -4,20 +4,9 @@ const User = require('../models/User');
 // Get current app update status for mobile app
 const getAppUpdateStatus = async (req, res) => {
   try {
-    const { currentVersion } = req.query;
-    
-    if (!currentVersion) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current version is required'
-      });
-    }
-
-    // Find active update that applies to current version
+    // Find the latest active update
     const update = await AppUpdate.findOne({
-      isActive: true,
-      minVersion: { $lte: currentVersion },
-      maxVersion: { $gte: currentVersion }
+      isActive: true
     }).sort({ releaseDate: -1 });
 
     if (!update) {
@@ -30,29 +19,12 @@ const getAppUpdateStatus = async (req, res) => {
       });
     }
 
-    // Check if user is on latest version
-    const latestUpdate = await AppUpdate.findOne({
-      isActive: true
-    }).sort({ releaseDate: -1 });
-
-    const isLatestVersion = latestUpdate && latestUpdate.version === currentVersion;
-
-    if (isLatestVersion) {
-      return res.json({
-        success: true,
-        data: {
-          hasUpdate: false,
-          update: null
-        }
-      });
-    }
-
+    // Return the update based on urgency
     res.json({
       success: true,
       data: {
-        hasUpdate: true,
+        hasUpdate: update.urgency !== 'none',
         update: {
-          version: update.version,
           title: update.title,
           description: update.description,
           urgency: update.urgency,
@@ -96,44 +68,29 @@ const getAllAppUpdates = async (req, res) => {
 const createAppUpdate = async (req, res) => {
   try {
     const {
-      version,
       title,
       description,
       urgency,
       features,
       bugFixes,
-      playStoreUrl,
-      minVersion,
-      maxVersion
+      playStoreUrl
     } = req.body;
 
     // Validate required fields
-    if (!version || !title || !description || !playStoreUrl || !minVersion || !maxVersion) {
+    if (!title || !description || !playStoreUrl) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields'
       });
     }
 
-    // Check if version already exists
-    const existingUpdate = await AppUpdate.findOne({ version });
-    if (existingUpdate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Version already exists'
-      });
-    }
-
     const update = new AppUpdate({
-      version,
       title,
       description,
       urgency: urgency || 'none',
       features: features || [],
       bugFixes: bugFixes || [],
       playStoreUrl,
-      minVersion,
-      maxVersion,
       createdBy: req.user.id
     });
 

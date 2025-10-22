@@ -1,11 +1,6 @@
 const mongoose = require('mongoose');
 
 const appUpdateSchema = new mongoose.Schema({
-  version: {
-    type: String,
-    required: true,
-    unique: true
-  },
   title: {
     type: String,
     required: true
@@ -34,14 +29,6 @@ const appUpdateSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
-  },
-  minVersion: {
-    type: String,
-    required: true
-  },
-  maxVersion: {
-    type: String,
-    required: true
   },
   releaseDate: {
     type: Date,
