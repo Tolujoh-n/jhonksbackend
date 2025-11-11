@@ -37,6 +37,7 @@ A comprehensive backend API for the Jhonks waste management platform, built with
 
    - Copy `config.env` and modify the values as needed
    - Ensure MongoDB is running on your system
+   - Configure the password reset mailer by setting `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM` (Gmail accounts require an app password)
 
 4. **Start the server**
 
