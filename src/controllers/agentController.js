@@ -1,8 +1,12 @@
+const crypto = require("crypto");
 const User = require("../models/User");
 const Bin = require("../models/Bin");
 const Delivery = require("../models/Delivery");
 const AgentFee = require("../models/AgentFee");
+const AgentPhoneVerification = require("../models/AgentPhoneVerification");
 const { NotificationService } = require("./notificationController");
+const { sendPhoneVerificationOtp } = require("../utils/sms");
+const { hashValue, generateOtp, normalizePhoneNumber } = require("../utils/phone");
 
 // Helper function to get current agent fee
 const getCurrentAgentFee = async () => {
@@ -12,6 +16,175 @@ const getCurrentAgentFee = async () => {
   }).sort({ effectiveFrom: -1 });
 
   return currentFee ? currentFee.feePerKg : 20; // Default to 20 if no fee found
+};
+
+const AGENT_PHONE_OTP_EXPIRY_MINUTES = 10;
+const AGENT_PHONE_VERIFICATION_TOKEN_EXPIRY_MINUTES = 30;
+const AGENT_MAX_PHONE_OTP_ATTEMPTS = 5;
+
+exports.requestAgentPhoneVerificationOtp = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Phone number is required.",
+      });
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    if (!normalizedPhoneNumber) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Please provide a valid Nigerian phone number.",
+      });
+    }
+
+    const existingUserWithPhone = await User.findOne({
+      phoneNumber: normalizedPhoneNumber,
+      _id: { $ne: req.user.id },
+    });
+
+    if (existingUserWithPhone) {
+      return res.status(409).json({
+        status: "fail",
+        code: "PHONE_NUMBER_IN_USE",
+        message:
+          "This phone number is linked to another account. Please use a different number.",
+      });
+    }
+
+    const otp = generateOtp();
+    const otpExpiresAt = new Date(
+      Date.now() + AGENT_PHONE_OTP_EXPIRY_MINUTES * 60 * 1000
+    );
+
+    await AgentPhoneVerification.findOneAndUpdate(
+      { phoneNumber: normalizedPhoneNumber },
+      {
+        user: req.user.id,
+        phoneNumber: normalizedPhoneNumber,
+        otpHash: hashValue(otp),
+        otpExpiresAt,
+        otpAttempts: 0,
+        verificationTokenHash: undefined,
+        verificationTokenExpiresAt: undefined,
+        verifiedAt: undefined,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await sendPhoneVerificationOtp({
+      phoneNumber: normalizedPhoneNumber,
+      otp,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "We sent a verification code to your phone.",
+      data: {
+        phoneNumber: normalizedPhoneNumber,
+      },
+    });
+  } catch (error) {
+    console.error("Agent phone verification OTP request error:", error);
+    res.status(500).json({
+      status: "error",
+      message:
+        "We could not send the verification code right now. Please try again shortly.",
+    });
+  }
+};
+
+exports.verifyAgentPhoneVerificationOtp = async (req, res) => {
+  try {
+    const { phoneNumber, otp } = req.body;
+
+    if (!phoneNumber || !otp) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Phone number and OTP are required.",
+      });
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    const verificationRecord = await AgentPhoneVerification.findOne({
+      phoneNumber: normalizedPhoneNumber,
+      user: req.user.id,
+    });
+
+    if (
+      !verificationRecord ||
+      !verificationRecord.otpHash ||
+      !verificationRecord.otpExpiresAt
+    ) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "We couldn't find an active verification request for this phone number.",
+      });
+    }
+
+    if (verificationRecord.otpExpiresAt < Date.now()) {
+      return res.status(400).json({
+        status: "fail",
+        message: "This verification code has expired. Please request a new one.",
+      });
+    }
+
+    if (verificationRecord.otpAttempts >= AGENT_MAX_PHONE_OTP_ATTEMPTS) {
+      return res.status(429).json({
+        status: "fail",
+        message:
+          "Too many incorrect attempts. Please request a new verification code.",
+      });
+    }
+
+    if (hashValue(otp) !== verificationRecord.otpHash) {
+      verificationRecord.otpAttempts += 1;
+      await verificationRecord.save({ validateBeforeSave: false });
+
+      return res.status(400).json({
+        status: "fail",
+        message: "The verification code you entered is incorrect.",
+      });
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
+    verificationRecord.verificationTokenHash = hashValue(verificationToken);
+    verificationRecord.verificationTokenExpiresAt = new Date(
+      Date.now() +
+        AGENT_PHONE_VERIFICATION_TOKEN_EXPIRY_MINUTES * 60 * 1000
+    );
+    verificationRecord.verifiedAt = new Date();
+    verificationRecord.otpHash = undefined;
+    verificationRecord.otpExpiresAt = undefined;
+    verificationRecord.otpAttempts = 0;
+
+    await verificationRecord.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      status: "success",
+      message: "Phone number verified successfully.",
+      data: {
+        verificationToken,
+        phoneNumber: normalizedPhoneNumber,
+        phoneVerified: true,
+        verifiedAt: verificationRecord.verifiedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Agent phone verification OTP validation error:", error);
+    res.status(500).json({
+      status: "error",
+      message:
+        "We could not verify the code right now. Please try again shortly.",
+    });
+  }
 };
 
 exports.registerAsAgent = async (req, res) => {
@@ -26,6 +199,7 @@ exports.registerAsAgent = async (req, res) => {
       streetAddress,
       openHours,
       confirmationCode,
+      agentPhoneVerificationToken,
     } = req.body;
 
     if (confirmationCode !== "123456") {
@@ -35,22 +209,61 @@ exports.registerAsAgent = async (req, res) => {
       });
     }
 
+    const normalizedPhoneNumber = normalizePhoneNumber(phone_number);
+
+    if (!normalizedPhoneNumber) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Please provide a valid Nigerian phone number.",
+      });
+    }
+
+    if (!agentPhoneVerificationToken) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Please verify your phone number before completing registration.",
+      });
+    }
+
+    const verificationRecord = await AgentPhoneVerification.findOne({
+      phoneNumber: normalizedPhoneNumber,
+      user: req.user.id,
+    });
+
+    if (
+      !verificationRecord ||
+      !verificationRecord.verificationTokenHash ||
+      !verificationRecord.verificationTokenExpiresAt ||
+      !verificationRecord.verifiedAt ||
+      verificationRecord.verificationTokenExpiresAt < Date.now() ||
+      hashValue(agentPhoneVerificationToken || "") !==
+        verificationRecord.verificationTokenHash
+    ) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "Please verify your phone number before completing registration.",
+      });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.user.id,
       {
         isAgent: true,
         role: "agent",
-        phoneNumber: phone_number,
+        phoneNumber: normalizedPhoneNumber,
         agentDetails: {
           verificationMethod,
           verificationNumber,
           agentImage,
           agent_name,
-          phone_number,
+          phone_number: normalizedPhoneNumber,
           localGovernmentAddress,
           streetAddress,
           openHours,
           isVerified: true,
+          phoneVerified: true,
+          phoneVerifiedAt: verificationRecord.verifiedAt,
         },
       },
       {
@@ -58,6 +271,11 @@ exports.registerAsAgent = async (req, res) => {
         runValidators: true,
       }
     );
+
+    await AgentPhoneVerification.deleteOne({
+      phoneNumber: normalizedPhoneNumber,
+      user: req.user.id,
+    });
 
     res.status(200).json({
       status: "success",

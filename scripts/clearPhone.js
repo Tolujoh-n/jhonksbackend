@@ -4,6 +4,7 @@ require("dotenv").config({ path: path.resolve(__dirname, "../config.env") });
 
 const User = require("../src/models/User");
 const PhoneVerification = require("../src/models/PhoneVerification");
+const AgentPhoneVerification = require("../src/models/AgentPhoneVerification");
 
 
 // usage example: node scripts/clearPhone.js 8148444929
@@ -48,14 +49,16 @@ const run = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
 
-    const [userResult, phoneVerificationResult] = await Promise.all([
+    const [userResult, phoneVerificationResult, agentPhoneVerificationResult] =
+      await Promise.all([
       User.deleteMany({ phoneNumber: normalizedPhone }),
       PhoneVerification.deleteMany({ phoneNumber: normalizedPhone }),
+      AgentPhoneVerification.deleteMany({ phoneNumber: normalizedPhone }),
     ]);
 
     console.log("✅ Cleanup complete.");
     console.log(
-      `   Removed ${userResult.deletedCount} user record(s) and ${phoneVerificationResult.deletedCount} phone verification record(s) for ${normalizedPhone}.`
+      `   Removed ${userResult.deletedCount} user record(s), ${phoneVerificationResult.deletedCount} user phone verification record(s), and ${agentPhoneVerificationResult.deletedCount} agent phone verification record(s) for ${normalizedPhone}.`
     );
   } catch (error) {
     console.error("❌  Cleanup failed:", error.message);

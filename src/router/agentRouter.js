@@ -14,6 +14,8 @@ const {
   getAllAgentsPublic,
   getAgentByIdPublic,
   confirmSale,
+  requestAgentPhoneVerificationOtp,
+  verifyAgentPhoneVerificationOtp,
 } = require("../controllers/agentController");
 
 //Authenticated routes
@@ -21,6 +23,8 @@ router.use(protect);
 
 router.get("/list", getAllAgentsPublic);
 router.post("/register", registerAsAgent);
+router.post("/phone/request-otp", requestAgentPhoneVerificationOtp);
+router.post("/phone/verify-otp", verifyAgentPhoneVerificationOtp);
 router.get("/:id([0-9a-fA-F]{24})", getAgentByIdPublic);
 
 // 🔐 Agent-only routes

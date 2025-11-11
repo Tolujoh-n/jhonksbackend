@@ -76,6 +76,11 @@ const userSchema = new mongoose.Schema({
     agentImage: String,
     agent_name: String,
     phone_number: String,
+    phoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    phoneVerifiedAt: Date,
     localGovernmentAddress: String,
     streetAddress: String,
     openHours: {
