@@ -37,7 +37,7 @@ const sendTermiiSms = async ({ smsUrl, payload }) => {
 exports.sendPhoneVerificationOtp = async ({ phoneNumber, otp }) => {
   const { apiKey, senderId, channel, smsUrl } = getTermiiConfig();
 
-  const message = `Your Jhonks verification code is ${otp}. It expires in 10 minutes.`;
+  const message = `Your Jhonks verification code is ${otp}. It expires in 10 minutes, Jhonks LTD.`;
 
   const payload = {
     api_key: apiKey,

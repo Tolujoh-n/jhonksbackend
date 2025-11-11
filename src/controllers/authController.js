@@ -44,8 +44,9 @@ exports.register = async (req, res) => {
     });
 
     if (existingUserWithPhone) {
-      return res.status(400).json({
+      return res.status(409).json({
         status: "fail",
+        code: "PHONE_NUMBER_EXISTS",
         message:
           "This phone number is already registered. If this is your number, please log in or reset your password.",
       });
@@ -59,6 +60,7 @@ exports.register = async (req, res) => {
       !phoneVerificationRecord ||
       !phoneVerificationRecord.verificationTokenHash ||
       !phoneVerificationRecord.verificationTokenExpiresAt ||
+      !phoneVerificationRecord.verifiedAt ||
       phoneVerificationRecord.verificationTokenExpiresAt < Date.now() ||
       hashValue(phoneVerificationToken || "") !==
         phoneVerificationRecord.verificationTokenHash
@@ -103,6 +105,7 @@ exports.register = async (req, res) => {
           role: user.role,
           phoneNumber: user.phoneNumber,
           phoneVerified: user.phoneVerified,
+          phoneVerificationCompletedAt: phoneVerificationRecord?.verifiedAt,
         },
       },
     });
@@ -399,10 +402,11 @@ exports.requestPhoneVerificationOtp = async (req, res) => {
     });
 
     if (existingUser) {
-      return res.status(400).json({
+      return res.status(409).json({
         status: "fail",
+        code: "PHONE_NUMBER_EXISTS",
         message:
-          "This phone number is already registered. If this is your number, please log in or reset your password.",
+          "This phone number is already registered. Please log in or reset your password to continue.",
       });
     }
 
@@ -433,6 +437,9 @@ exports.requestPhoneVerificationOtp = async (req, res) => {
     res.status(200).json({
       status: "success",
       message: "We sent a verification code to your phone.",
+      data: {
+        phoneNumber: normalizedPhoneNumber,
+      },
     });
   } catch (error) {
     console.error("Phone verification OTP request error:", error);
@@ -516,6 +523,9 @@ exports.verifyPhoneVerificationOtp = async (req, res) => {
       message: "Phone number verified successfully.",
       data: {
         verificationToken,
+        phoneNumber: normalizedPhoneNumber,
+        phoneVerified: true,
+        verifiedAt: verificationRecord.verifiedAt,
       },
     });
   } catch (error) {
