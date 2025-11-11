@@ -10,6 +10,7 @@ A comprehensive backend API for the Jhonks waste management platform, built with
 - **Agent System**: Agent registration, validation, and management
 - **Sales Processing**: Complete sales workflow with payment tracking
 - **Bank Details**: Secure bank account management
+- **Phone Verification**: OTP-based phone number verification using Termii SMS
 - **Admin Dashboard**: Comprehensive admin panel with statistics
 
 ## 📋 Prerequisites
@@ -38,6 +39,7 @@ A comprehensive backend API for the Jhonks waste management platform, built with
    - Copy `config.env` and modify the values as needed
    - Ensure MongoDB is running on your system
    - Configure the password reset mailer by setting `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM` (Gmail accounts require an app password)
+   - Configure SMS verification using Termii (`TERMII_API_KEY`, `TERMII_SENDER_ID`, `TERMII_SMS_CHANNEL`, and `TERMII_SMS_URL`). **Important:** `TERMII_SENDER_ID` must be an approved Termii sender name or a Termii-purchased phone number—Termii rejects requests when this value is missing or unapproved.
 
 4. **Start the server**
 

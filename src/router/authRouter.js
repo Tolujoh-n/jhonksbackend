@@ -11,6 +11,8 @@ const {
   requestPasswordReset,
   verifyPasswordResetOtp,
   resetPassword,
+  requestPhoneVerificationOtp,
+  verifyPhoneVerificationOtp,
 } = require("../controllers/authController");
 
 router.post("/register", register);
@@ -22,5 +24,7 @@ router.put("/change-password", protect, changePassword);
 router.post("/forgot-password", requestPasswordReset);
 router.post("/verify-reset-otp", verifyPasswordResetOtp);
 router.post("/reset-password", resetPassword);
+router.post("/phone/request-otp", requestPhoneVerificationOtp);
+router.post("/phone/verify-otp", verifyPhoneVerificationOtp);
 
 module.exports = router;

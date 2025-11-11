@@ -1,9 +1,11 @@
 const crypto = require("crypto");
 const User = require("../models/User");
+const PhoneVerification = require("../models/PhoneVerification");
 const { checkReferralOnRegistration } = require("./referralController");
 const { NotificationService } = require("./notificationController");
 const { retryDatabaseOperation } = require("../utils/dbRetry");
 const { sendPasswordResetOtp } = require("../utils/email");
+const { sendPhoneVerificationOtp } = require("../utils/sms");
 
 exports.register = async (req, res) => {
   try {
@@ -17,12 +19,54 @@ exports.register = async (req, res) => {
       phoneNumber,
       password,
       confirmPassword,
+      phoneVerificationToken,
     } = req.body;
 
     if (password !== confirmPassword) {
       return res.status(400).json({
         status: "fail",
         message: "Passwords do not match",
+      });
+    }
+
+    if (!phoneVerificationToken) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "Please verify your phone number before completing registration.",
+      });
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    const existingUserWithPhone = await User.findOne({
+      phoneNumber: normalizedPhoneNumber,
+    });
+
+    if (existingUserWithPhone) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "This phone number is already registered. If this is your number, please log in or reset your password.",
+      });
+    }
+
+    const phoneVerificationRecord = await PhoneVerification.findOne({
+      phoneNumber: normalizedPhoneNumber,
+    });
+
+    if (
+      !phoneVerificationRecord ||
+      !phoneVerificationRecord.verificationTokenHash ||
+      !phoneVerificationRecord.verificationTokenExpiresAt ||
+      phoneVerificationRecord.verificationTokenExpiresAt < Date.now() ||
+      hashValue(phoneVerificationToken || "") !==
+        phoneVerificationRecord.verificationTokenHash
+    ) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "Please verify your phone number before completing registration.",
       });
     }
 
@@ -33,8 +77,9 @@ exports.register = async (req, res) => {
       lastName,
       homeAddress,
       state,
-      phoneNumber,
+      phoneNumber: normalizedPhoneNumber,
       password,
+      phoneVerified: true,
     });
 
     const token = user.generateAuthToken();
@@ -42,6 +87,8 @@ exports.register = async (req, res) => {
     // Check for referral and create welcome notification
     await checkReferralOnRegistration(user._id, phoneNumber);
     await NotificationService.createWelcomeNotification(user._id);
+
+    await PhoneVerification.deleteOne({ phoneNumber: normalizedPhoneNumber });
 
     res.status(201).json({
       status: "success",
@@ -54,6 +101,8 @@ exports.register = async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role,
+          phoneNumber: user.phoneNumber,
+          phoneVerified: user.phoneVerified,
         },
       },
     });
@@ -96,6 +145,7 @@ exports.login = async (req, res) => {
           lastName: user.lastName,
           role: user.role,
           isAgent: user.isAgent,
+          phoneVerified: user.phoneVerified,
         },
       },
     });
@@ -139,6 +189,7 @@ exports.getMe = async (req, res) => {
           state: user.state,
           role: user.role,
           isAgent: user.isAgent,
+          phoneVerified: user.phoneVerified,
           agentDetails: user.agentDetails,
           profileImage: user.profileImage,
         },
@@ -305,6 +356,177 @@ const hashValue = (value) =>
 
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
+
+const normalizePhoneNumber = (value = "") => {
+  if (!value) return "";
+
+  const digitsOnly = value.toString().replace(/\D/g, "");
+
+  if (digitsOnly.startsWith("234")) {
+    return digitsOnly;
+  }
+
+  if (digitsOnly.startsWith("0")) {
+    return `234${digitsOnly.slice(1)}`;
+  }
+
+  if (digitsOnly.length === 10 || digitsOnly.length === 11) {
+    return `234${digitsOnly.startsWith("0") ? digitsOnly.slice(1) : digitsOnly}`;
+  }
+
+  return digitsOnly;
+};
+
+const PHONE_OTP_EXPIRY_MINUTES = 10;
+const PHONE_VERIFICATION_TOKEN_EXPIRY_MINUTES = 30;
+const MAX_PHONE_OTP_ATTEMPTS = 5;
+
+exports.requestPhoneVerificationOtp = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Phone number is required.",
+      });
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    const existingUser = await User.findOne({
+      phoneNumber: normalizedPhoneNumber,
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "This phone number is already registered. If this is your number, please log in or reset your password.",
+      });
+    }
+
+    const otp = generateOtp();
+    const otpExpiresAt = new Date(
+      Date.now() + PHONE_OTP_EXPIRY_MINUTES * 60 * 1000
+    );
+
+    await PhoneVerification.findOneAndUpdate(
+      { phoneNumber: normalizedPhoneNumber },
+      {
+        phoneNumber: normalizedPhoneNumber,
+        otpHash: hashValue(otp),
+        otpExpiresAt,
+        otpAttempts: 0,
+        verificationTokenHash: undefined,
+        verificationTokenExpiresAt: undefined,
+        verifiedAt: undefined,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await sendPhoneVerificationOtp({
+      phoneNumber: normalizedPhoneNumber,
+      otp,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "We sent a verification code to your phone.",
+    });
+  } catch (error) {
+    console.error("Phone verification OTP request error:", error);
+    res.status(500).json({
+      status: "error",
+      message:
+        "We could not send the verification code right now. Please try again shortly.",
+    });
+  }
+};
+
+exports.verifyPhoneVerificationOtp = async (req, res) => {
+  try {
+    const { phoneNumber, otp } = req.body;
+
+    if (!phoneNumber || !otp) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Phone number and OTP are required.",
+      });
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    const verificationRecord = await PhoneVerification.findOne({
+      phoneNumber: normalizedPhoneNumber,
+    });
+
+    if (
+      !verificationRecord ||
+      !verificationRecord.otpHash ||
+      !verificationRecord.otpExpiresAt
+    ) {
+      return res.status(400).json({
+        status: "fail",
+        message:
+          "We couldn't find an active verification request for this phone number.",
+      });
+    }
+
+    if (verificationRecord.otpExpiresAt < Date.now()) {
+      return res.status(400).json({
+        status: "fail",
+        message: "This verification code has expired. Please request a new one.",
+      });
+    }
+
+    if (verificationRecord.otpAttempts >= MAX_PHONE_OTP_ATTEMPTS) {
+      return res.status(429).json({
+        status: "fail",
+        message:
+          "Too many incorrect attempts. Please request a new verification code.",
+      });
+    }
+
+    if (hashValue(otp) !== verificationRecord.otpHash) {
+      verificationRecord.otpAttempts += 1;
+      await verificationRecord.save({ validateBeforeSave: false });
+
+      return res.status(400).json({
+        status: "fail",
+        message: "The verification code you entered is incorrect.",
+      });
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
+    verificationRecord.verificationTokenHash = hashValue(verificationToken);
+    verificationRecord.verificationTokenExpiresAt = new Date(
+      Date.now() + PHONE_VERIFICATION_TOKEN_EXPIRY_MINUTES * 60 * 1000
+    );
+    verificationRecord.verifiedAt = new Date();
+    verificationRecord.otpHash = undefined;
+    verificationRecord.otpExpiresAt = undefined;
+    verificationRecord.otpAttempts = 0;
+
+    await verificationRecord.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      status: "success",
+      message: "Phone number verified successfully.",
+      data: {
+        verificationToken,
+      },
+    });
+  } catch (error) {
+    console.error("Phone verification OTP validation error:", error);
+    res.status(500).json({
+      status: "error",
+      message:
+        "We could not verify the code right now. Please try again shortly.",
+    });
+  }
+};
 
 exports.requestPasswordReset = async (req, res) => {
   try {

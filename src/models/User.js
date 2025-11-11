@@ -37,12 +37,18 @@ const userSchema = new mongoose.Schema({
   phoneNumber: {
     type: String,
     required: [true, "Please provide your phone number"],
+    unique: true,
+    trim: true,
   },
   password: {
     type: String,
     required: [true, "Please provide a password"],
     minlength: 6,
     select: false,
+  },
+  phoneVerified: {
+    type: Boolean,
+    default: false,
   },
   profileImage: {
     type: String,
