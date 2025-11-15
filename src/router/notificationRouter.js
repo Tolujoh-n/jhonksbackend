@@ -4,6 +4,8 @@ const {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  registerPushToken,
+  removePushToken,
 } = require("../controllers/notificationController");
 const { protect } = require("../middleware/auth");
 
@@ -11,6 +13,10 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(protect);
+
+// Register Expo push token
+router.post("/push-token", registerPushToken);
+router.delete("/push-token", removePushToken);
 
 // Get user notifications
 router.get("/", getUserNotifications);

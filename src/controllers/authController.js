@@ -540,11 +540,28 @@ exports.requestPasswordReset = async (req, res) => {
     user.passwordResetTokenExpires = undefined;
 
     await user.save({ validateBeforeSave: false });
-    await sendPasswordResetOtp({
-      email: user.email,
-      firstName: user.firstName,
-      otp,
-    });
+    
+    // Send password reset OTP email
+    try {
+      await sendPasswordResetOtp({
+        email: user.email,
+        firstName: user.firstName,
+        otp,
+      });
+    } catch (emailError) {
+      console.error("Email sending error:", emailError);
+      // Reset the OTP fields if email fails
+      user.passwordResetOtp = undefined;
+      user.passwordResetOtpExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+      
+      return res.status(500).json({
+        status: "error",
+        message:
+          "We were unable to send the reset email at this time. Please check your email configuration or try again shortly.",
+        error: process.env.NODE_ENV === "development" ? emailError.message : undefined,
+      });
+    }
 
     res.status(200).json({
       status: "success",
@@ -557,6 +574,7 @@ exports.requestPasswordReset = async (req, res) => {
       status: "error",
       message:
         "We were unable to process your request at this time. Please try again shortly.",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

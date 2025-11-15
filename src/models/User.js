@@ -63,6 +63,10 @@ const userSchema = new mongoose.Schema({
     enum: ["user", "agent", "admin"],
     default: "user",
   },
+  pushTokens: {
+    type: [String],
+    default: [],
+  },
   isAgent: {
     type: Boolean,
     default: false,

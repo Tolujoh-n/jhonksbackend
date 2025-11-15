@@ -254,21 +254,10 @@ app.set("io", io);
 
 const PORT = process.env.PORT || 5000;
 
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/jhonks-demo-db", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => {
-    console.log("✅ Connected to MongoDB");
-
-    // Now safe to start the server
-    server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📱 Frontend URL: ${process.env.CORS_ORIGIN || "http://localhost:3000"}`);
-      console.log(`🔗 API URL: http://localhost:${PORT}/api`);
-    });
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
-  });
+// Start server (MongoDB connection already established above)
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📱 Frontend URL: ${process.env.CORS_ORIGIN || "http://localhost:3000"}`);
+  console.log(`🔗 API URL: ${process.env.NODE_ENV === 'production' ? 'https://jhonksbackend.onrender.com' : `http://localhost:${PORT}`}/api`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
