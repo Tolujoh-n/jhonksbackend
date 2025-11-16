@@ -73,9 +73,36 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Check for existing email and username before creating
+    const existingUserWithEmail = await User.findOne({
+      email: email.toLowerCase(),
+    });
+
+    if (existingUserWithEmail) {
+      return res.status(409).json({
+        status: "fail",
+        code: "EMAIL_EXISTS",
+        message:
+          "This email address is already registered. Please use a different email or try logging in.",
+      });
+    }
+
+    const existingUserWithUsername = await User.findOne({
+      username: username.trim(),
+    });
+
+    if (existingUserWithUsername) {
+      return res.status(409).json({
+        status: "fail",
+        code: "USERNAME_EXISTS",
+        message:
+          "This username is already taken. Please choose a different username.",
+      });
+    }
+
     const user = await User.create({
-      username,
-      email,
+      username: username.trim(),
+      email: email.toLowerCase(),
       firstName,
       lastName,
       homeAddress,
@@ -111,9 +138,60 @@ exports.register = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(400).json({
-      status: "fail",
-      message: error.message,
+    // Handle MongoDB duplicate key errors gracefully
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern || {})[0];
+      
+      if (duplicateField === "email") {
+        return res.status(409).json({
+          status: "fail",
+          code: "EMAIL_EXISTS",
+          message:
+            "This email address is already registered. Please use a different email or try logging in.",
+        });
+      }
+      
+      if (duplicateField === "username") {
+        return res.status(409).json({
+          status: "fail",
+          code: "USERNAME_EXISTS",
+          message:
+            "This username is already taken. Please choose a different username.",
+        });
+      }
+      
+      if (duplicateField === "phoneNumber") {
+        return res.status(409).json({
+          status: "fail",
+          code: "PHONE_NUMBER_EXISTS",
+          message:
+            "This phone number is already registered. If this is your number, please log in or reset your password.",
+        });
+      }
+      
+      return res.status(409).json({
+        status: "fail",
+        message: "This information is already in use. Please use different details.",
+      });
+    }
+
+    // Handle validation errors
+    if (error.name === "ValidationError") {
+      const validationMessages = Object.values(error.errors).map(
+        (err) => err.message
+      );
+      return res.status(400).json({
+        status: "fail",
+        message: validationMessages.join(". "),
+      });
+    }
+
+    // Generic error - don't expose technical details
+    console.error("Registration error:", error);
+    res.status(500).json({
+      status: "error",
+      message:
+        "We were unable to create your account at this time. Please try again later.",
     });
   }
 };
