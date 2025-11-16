@@ -175,9 +175,32 @@ const createAppUpdate = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating app update:', error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationMessages = Object.values(error.errors).map(
+        (err) => err.message
+      );
+      return res.status(400).json({
+        success: false,
+        message: validationMessages.join('. ')
+      });
+    }
+    
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'An update with similar details already exists'
+      });
+    }
+    
+    // Return more detailed error in development, generic in production
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: process.env.NODE_ENV === 'development' 
+        ? (error.message || 'Internal server error')
+        : 'Internal server error. Please try again later.'
     });
   }
 };
@@ -208,9 +231,23 @@ const updateAppUpdate = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating app update:', error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const validationMessages = Object.values(error.errors).map(
+        (err) => err.message
+      );
+      return res.status(400).json({
+        success: false,
+        message: validationMessages.join('. ')
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: process.env.NODE_ENV === 'development' 
+        ? (error.message || 'Internal server error')
+        : 'Internal server error. Please try again later.'
     });
   }
 };
@@ -237,7 +274,9 @@ const deleteAppUpdate = async (req, res) => {
     console.error('Error deleting app update:', error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: process.env.NODE_ENV === 'development' 
+        ? (error.message || 'Internal server error')
+        : 'Internal server error. Please try again later.'
     });
   }
 };
@@ -267,7 +306,9 @@ const toggleAppUpdateStatus = async (req, res) => {
     console.error('Error toggling app update status:', error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: process.env.NODE_ENV === 'development' 
+        ? (error.message || 'Internal server error')
+        : 'Internal server error. Please try again later.'
     });
   }
 };
