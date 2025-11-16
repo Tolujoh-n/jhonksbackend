@@ -22,9 +22,33 @@ const appUpdateSchema = new mongoose.Schema({
     title: String,
     description: String
   }],
+  // Version control fields
+  currentVersion: {
+    type: String,
+    required: true,
+    default: '1.0.0',
+    description: 'The latest version - users with this version will NOT see the update modal'
+  },
+  minVersion: {
+    type: String,
+    required: false,
+    description: 'Minimum version that should see this update (inclusive). If not set, all versions below currentVersion will see it.'
+  },
+  maxVersion: {
+    type: String,
+    required: false,
+    description: 'Maximum version that should see this update (exclusive). Versions below this but not equal to currentVersion will see it.'
+  },
+  // Store URLs
   playStoreUrl: {
     type: String,
-    required: true
+    required: true,
+    description: 'Google Play Store URL for Android'
+  },
+  appStoreUrl: {
+    type: String,
+    required: false,
+    description: 'Apple App Store URL for iOS'
   },
   isActive: {
     type: Boolean,

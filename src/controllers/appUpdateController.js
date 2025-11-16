@@ -1,9 +1,14 @@
 const AppUpdate = require('../models/AppUpdate');
 const User = require('../models/User');
+const { shouldShowUpdate } = require('../utils/versionCompare');
 
 // Get current app update status for mobile app
 const getAppUpdateStatus = async (req, res) => {
   try {
+    // Get client version and platform from query params
+    const clientVersion = req.query.version || '1.0.0';
+    const platform = req.query.platform || 'android'; // 'android' or 'ios'
+
     // Find the latest active update
     const update = await AppUpdate.findOne({
       isActive: true
@@ -19,18 +24,54 @@ const getAppUpdateStatus = async (req, res) => {
       });
     }
 
-    // Return the update based on urgency
+    // Check if client version should see this update
+    const shouldShow = shouldShowUpdate(
+      clientVersion,
+      update.currentVersion,
+      update.minVersion,
+      update.maxVersion
+    );
+
+    // If client shouldn't see the update, return no update
+    if (!shouldShow) {
+      return res.json({
+        success: true,
+        data: {
+          hasUpdate: false,
+          update: null
+        }
+      });
+    }
+
+    // If urgency is 'none', don't show update
+    if (update.urgency === 'none') {
+      return res.json({
+        success: true,
+        data: {
+          hasUpdate: false,
+          update: null
+        }
+      });
+    }
+
+    // Determine store URL based on platform
+    const storeUrl = platform.toLowerCase() === 'ios' 
+      ? (update.appStoreUrl || update.playStoreUrl) 
+      : update.playStoreUrl;
+
+    // Return the update
     res.json({
       success: true,
       data: {
-        hasUpdate: update.urgency !== 'none',
+        hasUpdate: true,
         update: {
           title: update.title,
           description: update.description,
           urgency: update.urgency,
-          features: update.features,
-          bugFixes: update.bugFixes,
-          playStoreUrl: update.playStoreUrl,
+          features: update.features || [],
+          bugFixes: update.bugFixes || [],
+          playStoreUrl: storeUrl,
+          appStoreUrl: update.appStoreUrl || storeUrl,
           releaseDate: update.releaseDate
         }
       }
@@ -73,14 +114,41 @@ const createAppUpdate = async (req, res) => {
       urgency,
       features,
       bugFixes,
-      playStoreUrl
+      playStoreUrl,
+      appStoreUrl,
+      currentVersion,
+      minVersion,
+      maxVersion
     } = req.body;
 
     // Validate required fields
-    if (!title || !description || !playStoreUrl) {
+    if (!title || !description || !playStoreUrl || !currentVersion) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields'
+        message: 'Missing required fields: title, description, playStoreUrl, and currentVersion are required'
+      });
+    }
+
+    // Validate version format (basic check)
+    const versionPattern = /^\d+\.\d+\.\d+$/;
+    if (!versionPattern.test(currentVersion)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid currentVersion format. Use semantic versioning (e.g., 1.0.0)'
+      });
+    }
+
+    if (minVersion && !versionPattern.test(minVersion)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid minVersion format. Use semantic versioning (e.g., 1.0.0)'
+      });
+    }
+
+    if (maxVersion && !versionPattern.test(maxVersion)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid maxVersion format. Use semantic versioning (e.g., 1.0.0)'
       });
     }
 
@@ -91,6 +159,10 @@ const createAppUpdate = async (req, res) => {
       features: features || [],
       bugFixes: bugFixes || [],
       playStoreUrl,
+      appStoreUrl: appStoreUrl || '',
+      currentVersion,
+      minVersion: minVersion || null,
+      maxVersion: maxVersion || null,
       createdBy: req.user.id
     });
 
