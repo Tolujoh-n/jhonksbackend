@@ -11,9 +11,19 @@ const rootRouter = require("./src/router/index");
 
 const app = express();
 const server = http.createServer(app);
+const allowedOriginsForSocket = (process.env.CORS_ORIGIN || "http://localhost:3000")
+  .split(",")
+  .map(origin => origin.trim());
+
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: function (origin, callback) {
+      if (!origin || allowedOriginsForSocket.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -44,10 +54,17 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        // Log for debugging
+        console.log('CORS blocked origin:', origin);
+        console.log('Allowed origins:', allowedOrigins);
         callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400, // 24 hours
   })
 );
 
