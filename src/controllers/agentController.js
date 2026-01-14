@@ -564,6 +564,90 @@ exports.getAgentByIdPublic = async (req, res) => {
   }
 };
 
+// Redirect order to another agent
+exports.redirectOrder = async (req, res) => {
+  try {
+    const { binId } = req.params;
+    const { newAgentId } = req.body;
+
+    if (!newAgentId) {
+      return res.status(400).json({
+        status: "fail",
+        message: "New agent ID is required",
+      });
+    }
+
+    // Find the bin and verify current agent is assigned
+    const bin = await Bin.findOne({
+      _id: binId,
+      selectedAgent: req.user.id,
+      validationStatus: false,
+    }).populate("user", "firstName lastName");
+
+    if (!bin) {
+      return res.status(404).json({
+        status: "fail",
+        message: "Bin not found or you are not assigned to this order",
+      });
+    }
+
+    // Verify new agent exists and is an agent
+    const newAgent = await User.findOne({
+      _id: newAgentId,
+      role: "agent",
+      isAgent: true,
+    });
+
+    if (!newAgent) {
+      return res.status(404).json({
+        status: "fail",
+        message: "New agent not found or is not a valid agent",
+      });
+    }
+
+    // Prevent redirecting to the same agent
+    if (newAgentId === req.user.id.toString()) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Cannot redirect order to yourself",
+      });
+    }
+
+    // Get current agent info for notification
+    const currentAgent = await User.findById(req.user.id);
+
+    // Update bin with new agent
+    bin.selectedAgent = newAgentId;
+    await bin.save();
+
+    // Create notification for seller
+    await NotificationService.createAgentRedirectNotification(
+      bin.user._id,
+      currentAgent.firstName + " " + currentAgent.lastName,
+      newAgent.firstName + " " + newAgent.lastName,
+      binId
+    );
+
+    res.status(200).json({
+      status: "success",
+      message: "Order redirected successfully",
+      data: {
+        bin,
+        newAgent: {
+          id: newAgent._id,
+          name: newAgent.firstName + " " + newAgent.lastName,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error redirecting order:", error);
+    res.status(400).json({
+      status: "fail",
+      message: error.message || "Error redirecting order",
+    });
+  }
+};
+
 exports.getValidationHistory = async (req, res) => {
   try {
     const bins = await Bin.find({

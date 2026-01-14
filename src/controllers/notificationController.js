@@ -368,6 +368,17 @@ const NotificationService = {
     );
   },
 
+  // Agent redirect notification
+  createAgentRedirectNotification: async (userId, oldAgentName, newAgentName, binId) => {
+    return await createNotification(
+      userId,
+      "agent_redirected",
+      "Order Redirected",
+      `Your order has been redirected from ${oldAgentName} to ${newAgentName}`,
+      { binId, oldAgentName, newAgentName }
+    );
+  },
+
   // Payment received notification
   createPaymentReceivedNotification: async (userId, amount) => {
     return await createNotification(

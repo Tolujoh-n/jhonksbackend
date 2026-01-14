@@ -16,6 +16,7 @@ const {
   confirmSale,
   requestAgentPhoneVerificationOtp,
   verifyAgentPhoneVerificationOtp,
+  redirectOrder,
 } = require("../controllers/agentController");
 
 //Authenticated routes
@@ -36,6 +37,7 @@ router.put("/update-bin-item", updateBinItemQuantity);
 router.delete("/delete-bin-item", deleteBinItem);
 router.post("/cancel-seller-order", cancelSellerOrder);
 router.post("/validate/:binId", validateBin);
+router.post("/redirect-order/:binId", redirectOrder);
 router.post("/delivery", createDelivery);
 router.get("/delivery-history", getDeliveryHistory);
 router.post("/confirm-sale/:binId", confirmSale);
