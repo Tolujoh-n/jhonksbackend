@@ -26,9 +26,31 @@ const normalizePhoneNumber = (value = "") => {
   return digitsOnly;
 };
 
+// Format phone number for display (2348071813757 -> 08071813757)
+const formatPhoneNumberForDisplay = (phoneNumber = "") => {
+  if (!phoneNumber) return "";
+  
+  const digitsOnly = phoneNumber.toString().replace(/\D/g, "");
+  
+  if (digitsOnly.startsWith("234")) {
+    return `0${digitsOnly.slice(3)}`;
+  }
+  
+  if (digitsOnly.startsWith("0")) {
+    return digitsOnly;
+  }
+  
+  if (digitsOnly.length === 10) {
+    return `0${digitsOnly}`;
+  }
+  
+  return phoneNumber;
+};
+
 module.exports = {
   hashValue,
   generateOtp,
   normalizePhoneNumber,
+  formatPhoneNumberForDisplay,
 };
 
