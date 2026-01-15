@@ -117,10 +117,28 @@ const getReferralList = async (req, res) => {
   }
 };
 
-// Generate referral link
+// Generate referral link and code
 const generateReferralLink = async (req, res) => {
   try {
     const userId = req.user.id;
+    let user = await User.findById(userId).select('referralCode');
+    
+    // Generate referral code if user doesn't have one (for existing users)
+    if (!user.referralCode) {
+      let code;
+      let isUnique = false;
+      while (!isUnique) {
+        // Generate 6-character alphanumeric code
+        code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        const existingUser = await User.findOne({ referralCode: code });
+        if (!existingUser) {
+          isUnique = true;
+        }
+      }
+      user.referralCode = code;
+      await user.save();
+    }
+    
     const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const referralLink = `${baseUrl}/referral/${userId}`;
 
@@ -128,6 +146,7 @@ const generateReferralLink = async (req, res) => {
       status: "success",
       data: {
         referralLink,
+        referralCode: user.referralCode,
       },
     });
   } catch (error) {
@@ -179,18 +198,58 @@ const processReferralSignup = async (req, res) => {
 };
 
 // Check and update referral status when user registers
-const checkReferralOnRegistration = async (userId, phoneNumber) => {
+const checkReferralOnRegistration = async (userId, phoneNumber, referralCode = null) => {
   try {
-    const referral = await Referral.findOne({
-      referredPhoneNumber: phoneNumber,
-      referredUser: null,
-    });
+    const normalizedPhone = phoneNumber.replace(/\D/g, "");
+    const normalizedPhoneWithCode = normalizedPhone.startsWith("234") 
+      ? normalizedPhone 
+      : `234${normalizedPhone.slice(-10)}`;
+
+    let referral = null;
+
+    // If referral code is provided, use it
+    if (referralCode) {
+      const referrer = await User.findOne({ referralCode: referralCode.toUpperCase() });
+      if (referrer) {
+        // Check if referral already exists
+        referral = await Referral.findOne({
+          referredPhoneNumber: normalizedPhoneWithCode,
+          referrer: referrer._id,
+        });
+
+        if (!referral) {
+          // Create new referral record
+          referral = new Referral({
+            referrer: referrer._id,
+            referredPhoneNumber: normalizedPhoneWithCode,
+            referredUser: userId,
+            status: "pending",
+            registered: true,
+            clickTracked: false,
+          });
+          await referral.save();
+        } else {
+          // Update existing referral
+          referral.referredUser = userId;
+          referral.registered = true;
+          await referral.save();
+        }
+      }
+    } else {
+      // Fallback to phone number lookup
+      referral = await Referral.findOne({
+        referredPhoneNumber: normalizedPhoneWithCode,
+        referredUser: null,
+      });
+
+      if (referral) {
+        referral.referredUser = userId;
+        referral.registered = true;
+        await referral.save();
+      }
+    }
 
     if (referral) {
-      referral.referredUser = userId;
-      referral.registered = true;
-      await referral.save();
-
       // Create notification for referrer
       await Notification.create({
         user: referral.referrer,
@@ -248,12 +307,18 @@ const updateReferralStatus = async (userId) => {
   }
 };
 
-// Get referrer by ID (public endpoint)
+// Get referrer by ID or referral code (public endpoint)
 const getReferrerById = async (req, res) => {
   try {
     const { referralId } = req.params;
     
-    const referrer = await User.findById(referralId).select('firstName lastName');
+    // Try to find by ID first, then by referral code
+    let referrer = await User.findById(referralId).select('firstName lastName referralCode');
+    
+    if (!referrer) {
+      // Try finding by referral code
+      referrer = await User.findOne({ referralCode: referralId.toUpperCase() }).select('firstName lastName referralCode');
+    }
     
     if (!referrer) {
       return res.status(404).json({
@@ -265,7 +330,12 @@ const getReferrerById = async (req, res) => {
     res.status(200).json({
       status: "success",
       data: {
-        referrer,
+        referrer: {
+          _id: referrer._id,
+          firstName: referrer.firstName,
+          lastName: referrer.lastName,
+          referralCode: referrer.referralCode,
+        },
       },
     });
   } catch (error) {
@@ -291,9 +361,28 @@ const trackReferralClick = async (req, res) => {
       });
     }
 
-    // Check if phone number already exists as referral
+    // Normalize phone number
+    const normalizedPhone = phoneNumber.replace(/\D/g, "");
+    const normalizedPhoneWithCode = normalizedPhone.startsWith("234") 
+      ? normalizedPhone 
+      : `234${normalizedPhone.slice(-10)}`;
+
+    // Check if phone number is already registered as a user
+    const registeredUser = await User.findOne({
+      phoneNumber: normalizedPhoneWithCode,
+    });
+
+    if (registeredUser) {
+      return res.status(400).json({
+        status: "error",
+        code: "PHONE_REGISTERED",
+        message: "This phone number is already registered",
+      });
+    }
+
+    // Check if phone number already exists as referral for this referrer
     const existingReferral = await Referral.findOne({
-      referredPhoneNumber: phoneNumber,
+      referredPhoneNumber: normalizedPhoneWithCode,
       referrer: referralId,
     });
 
@@ -305,10 +394,30 @@ const trackReferralClick = async (req, res) => {
       });
     }
 
-    // Create referral record
+    // Check if phone number exists in another person's pending referral
+    const existingPendingReferral = await Referral.findOne({
+      referredPhoneNumber: normalizedPhoneWithCode,
+      referrer: { $ne: referralId },
+      registered: false, // Only migrate if not registered
+    });
+
+    if (existingPendingReferral) {
+      // Migrate the referral to the new referrer
+      existingPendingReferral.referrer = referralId;
+      existingPendingReferral.clickTracked = true;
+      await existingPendingReferral.save();
+
+      return res.status(200).json({
+        status: "success",
+        message: "Referral migrated successfully",
+        data: { referral: existingPendingReferral, migrated: true },
+      });
+    }
+
+    // Create new referral record
     const referral = new Referral({
       referrer: referralId,
-      referredPhoneNumber: phoneNumber,
+      referredPhoneNumber: normalizedPhoneWithCode,
       status: "pending",
       clickTracked: true,
     });

@@ -106,10 +106,53 @@ const userSchema = new mongoose.Schema({
     ref: "Bank",
     default: null,
   },
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
+});
+
+// Generate unique referral code before saving (if new user)
+userSchema.pre("save", async function (next) {
+  if (this.isNew && !this.referralCode) {
+    let code;
+    let isUnique = false;
+    while (!isUnique) {
+      // Generate 6-character alphanumeric code
+      code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const existingUser = await mongoose.model("User").findOne({ referralCode: code });
+      if (!existingUser) {
+        isUnique = true;
+      }
+    }
+    this.referralCode = code;
+  }
+  next();
+});
+
+// Generate unique referral code before saving (if new user)
+userSchema.pre("save", async function (next) {
+  if (this.isNew && !this.referralCode) {
+    let code;
+    let isUnique = false;
+    while (!isUnique) {
+      // Generate 6-character alphanumeric code
+      code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const existingUser = await mongoose.model("User").findOne({ referralCode: code });
+      if (!existingUser) {
+        isUnique = true;
+      }
+    }
+    this.referralCode = code;
+  }
+  next();
 });
 
 // Hash password before saving
@@ -130,5 +173,8 @@ userSchema.methods.generateAuthToken = function () {
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// Index for referral code lookups
+userSchema.index({ referralCode: 1 });
 
 module.exports = mongoose.model("User", userSchema);

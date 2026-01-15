@@ -21,6 +21,7 @@ exports.register = async (req, res) => {
       password,
       confirmPassword,
       phoneVerificationToken,
+      referralCode,
     } = req.body;
 
     if (password !== confirmPassword) {
@@ -115,7 +116,7 @@ exports.register = async (req, res) => {
     const token = user.generateAuthToken();
 
     // Check for referral and create welcome notification
-    await checkReferralOnRegistration(user._id, phoneNumber);
+    await checkReferralOnRegistration(user._id, phoneNumber, referralCode);
     await NotificationService.createWelcomeNotification(user._id);
 
     await PhoneVerification.deleteOne({ phoneNumber: normalizedPhoneNumber });
