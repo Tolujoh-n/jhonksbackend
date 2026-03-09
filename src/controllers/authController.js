@@ -677,11 +677,19 @@ exports.requestPasswordReset = async (req, res) => {
       user.passwordResetOtp = undefined;
       user.passwordResetOtpExpires = undefined;
       await user.save({ validateBeforeSave: false });
-      
+
+      const isConfigError =
+        emailError.message?.includes("not configured") ||
+        emailError.message?.includes("not verified") ||
+        emailError.message?.includes("RESEND");
+
+      const userMessage = isConfigError
+        ? "Password reset is temporarily unavailable. Please try again later or contact support."
+        : "We were unable to send the reset email at this time. Please try again shortly.";
+
       return res.status(500).json({
         status: "error",
-        message:
-          "We were unable to send the reset email at this time. Please check your email configuration or try again shortly.",
+        message: userMessage,
         error: process.env.NODE_ENV === "development" ? emailError.message : undefined,
       });
     }

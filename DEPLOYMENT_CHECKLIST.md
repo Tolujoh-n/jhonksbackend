@@ -11,20 +11,15 @@
 
 Make sure these environment variables are set in your Render dashboard for the backend service:
 
-### Critical Variables:
+### Critical Variables (Password reset uses Resend, not Gmail SMTP):
 
-1. **SMTP_USER**
-   - Value: `myjhonks@gmail.com`
-   - Purpose: Gmail account for sending password reset emails
+1. **RESEND_API_KEY**
+   - Value: Your API key from [Resend](https://resend.com/api-keys) (e.g. `re_xxxxx`)
+   - Purpose: Required for sending password reset emails. **Without this, password reset will fail on mobile** (and any client hitting this backend).
 
-2. **SMTP_PASS**
-   - Value: `lvptpkovvkghsxcm`
-   - Purpose: Gmail app password (not regular password!)
-   - ⚠️ **IMPORTANT**: Must be an App Password from Gmail, not your regular password
-
-3. **EMAIL_FROM**
-   - Value: `"Jhonks Support" <contact@jhonks.com>` or `"Jhonks Support" <myjhonks@gmail.com>`
-   - Purpose: Email sender name and address
+2. **EMAIL_FROM**
+   - Value: `Jhonks Support <onboarding@resend.dev>` (for testing), or a verified domain sender (e.g. `Jhonks Support <noreply@yourdomain.com>`)
+   - Purpose: Sender shown on password reset emails. Use a [verified domain](https://resend.com/domains) in production.
 
 4. **MONGODB_URI**
    - Value: Your MongoDB Atlas connection string
@@ -80,32 +75,24 @@ After deploying:
 ## Common Issues and Solutions
 
 ### Issue: "Email service credentials are not configured"
-**Solution:** Check that `SMTP_USER` and `SMTP_PASS` are set in Render environment variables
-
-### Issue: Gmail blocking emails
-**Solution:** 
-- Ensure you're using an App Password, not your regular Gmail password
-- Generate App Password: Google Account → Security → 2-Step Verification → App Passwords
-- Make sure "Less secure app access" is enabled (if using older Gmail setup)
+**Solution:** Check that `RESEND_API_KEY` and `EMAIL_FROM` are set in Render environment variables. Password reset uses Resend, not Gmail SMTP.
 
 ### Issue: CORS errors
 **Solution:** 
 - Verify `CORS_ORIGIN` includes your web client URL
 - Check that the web client is calling the correct API URL
 
-### Issue: Email not received
+### Issue: Email not received / "We were unable to send the reset email" on mobile
 **Solution:**
-- Check spam folder
-- Verify email address exists in database
-- Check Render logs for email sending errors
-- Verify SMTP credentials are correct
+- **Mobile uses the production backend (Render).** If password reset works on web (localhost) but not on mobile, the production server likely has no Resend config.
+- Set on Render: `RESEND_API_KEY` (from resend.com) and `EMAIL_FROM` (e.g. `Jhonks Support <onboarding@resend.dev>` for testing).
+- Check spam folder; verify email exists in database; check Render logs for "Email sending error".
 
 ## Verifying Email Configuration
 
-You can test email configuration by checking Render logs after making a forgot password request. Look for:
-- ✅ "Email sending error" - indicates email configuration issue
-- ✅ Successful email send confirmation in logs
-- ✅ Any nodemailer errors
+After a forgot-password request, check Render logs for:
+- "Email sending error" → Resend not configured or domain not verified
+- Successful send → no error log
 
 ## Next Steps
 
