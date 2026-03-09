@@ -38,7 +38,7 @@ exports.getMyBin = async (req, res) => {
         .populate("materials.material")
         .populate(
           "selectedAgent",
-        "username firstName lastName phoneNumber state agentDetails"
+        "username firstName lastName phoneNumber state agentDetails spotlightLocations"
       );
     });
 

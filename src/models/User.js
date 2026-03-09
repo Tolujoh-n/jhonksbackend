@@ -101,6 +101,15 @@ const userSchema = new mongoose.Schema({
       default: false,
     },
   },
+  spotlightLocations: {
+    type: [
+      {
+        location: { type: String, trim: true },
+        time: { type: String, trim: true },
+      },
+    ],
+    default: [],
+  },
   selectedPaymentBank: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Bank",

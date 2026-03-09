@@ -275,6 +275,7 @@ exports.getMe = async (req, res) => {
           phoneVerified: user.phoneVerified,
           agentDetails: user.agentDetails,
           profileImage: user.profileImage,
+          spotlightLocations: user.spotlightLocations || [],
         },
       },
     });
@@ -393,6 +394,49 @@ exports.updateAgentDetails = async (req, res) => {
           id: user._id,
           agentDetails: user.agentDetails,
         },
+      },
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: "fail",
+      message: error.message,
+    });
+  }
+};
+
+// Update spotlight locations (agents only)
+exports.updateSpotlightLocations = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || !user.isAgent) {
+      return res.status(403).json({
+        status: "fail",
+        message: "Only agents can update spotlight locations",
+      });
+    }
+
+    const { spotlightLocations } = req.body;
+    if (!Array.isArray(spotlightLocations)) {
+      return res.status(400).json({
+        status: "fail",
+        message: "spotlightLocations must be an array",
+      });
+    }
+
+    const sanitized = spotlightLocations
+      .filter((item) => item && (item.location || item.time))
+      .map((item) => ({
+        location: String(item.location || "").trim(),
+        time: String(item.time || "").trim(),
+      }));
+
+    user.spotlightLocations = sanitized;
+    await user.save({ validateBeforeSave: true });
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        spotlightLocations: user.spotlightLocations,
       },
     });
   } catch (error) {

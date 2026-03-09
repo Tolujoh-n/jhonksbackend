@@ -1,17 +1,10 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-const createTransporter = () => {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error("Email service credentials are not configured");
-  }
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+const getFromAddress = () => {
+  // Use RESEND_FROM if set (e.g. for testing: onboarding@resend.dev), else EMAIL_FROM
+  return process.env.RESEND_FROM || process.env.EMAIL_FROM || "Jhonks Support <onboarding@resend.dev>";
 };
 
 const buildPasswordResetEmail = ({ firstName, otp }) => {
@@ -48,16 +41,23 @@ The Jhonks Team`,
 };
 
 exports.sendPasswordResetOtp = async ({ email, firstName, otp }) => {
-  const transporter = createTransporter();
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
   const { subject, text, html } = buildPasswordResetEmail({ firstName, otp });
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM || `"Jhonks Support" <${process.env.SMTP_USER}>`,
-    to: email,
+  const { data, error } = await resend.emails.send({
+    from: getFromAddress(),
+    to: [email],
     subject,
-    text,
     html,
+    text,
   });
+
+  if (error) {
+    throw new Error(error.message || "Failed to send email");
+  }
+
+  return data;
 };
-
-
